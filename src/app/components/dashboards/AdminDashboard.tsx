@@ -3,7 +3,7 @@ import { Button } from '../Button';
 import { Badge } from '../Badge';
 import { 
   Plus, Users, BookOpen, Calendar, Settings as SettingsIcon, 
-  Download, Filter, AlertTriangle, Eye, TrendingUp, 
+  Download, Filter, AlertTriangle, AlertCircle, Eye, TrendingUp, 
   ChevronRight, CheckCircle, XCircle, RefreshCw, 
   Mail, UserCheck, UserX, Edit, Trash2, Clock, FileText, ClipboardList, Flag,
   ShieldAlert, Info, Globe, UserPlus, ShieldCheck, MoreVertical, Settings2, Layout, CalendarDays
@@ -175,6 +175,36 @@ type DataHealthAlert = {
   severity: 'warning' | 'critical';
   message: string;
   date: string;
+};
+
+// Result Approvals Types
+type GradebookStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+type GradeCategory = 'Homework' | 'Exercise' | 'Lab' | 'Test' | 'Exam';
+
+type GradeWeightingConfig = {
+  id: string;
+  classId: string;
+  className: string;
+  subjectId: string;
+  subject: string;
+  termId: string;
+  term: string;
+  status: GradebookStatus;
+  submittedAt: string | null;
+  rejectionReason: string | null;
+  categoryWeights: Record<GradeCategory, number>;
+  assessmentMappings: Record<string, { category: GradeCategory; includeInCumulative: boolean }>;
+  updatedAt: string;
+};
+
+type GradebookApprovalRow = {
+  teacherName: string;
+  subject: string;
+  className: string;
+  term: string;
+  submissionDate: string | null;
+  status: GradebookStatus;
+  config: GradeWeightingConfig | null;
 };
 
 // ========== MOCK DATA (replace with API) ==========
@@ -990,7 +1020,7 @@ export function AdminDashboard() {
   const navigate = useNavigate();
   const hasInitializedPerformanceDefaults = useRef(false);
 
-  const [activeSection, setActiveSection] = useState<'school' | 'users' | 'audit' | 'performance' | 'syllabus' | 'lesson_note' | 'data_health'>('performance');
+  const [activeSection, setActiveSection] = useState<'school' | 'users' | 'audit' | 'performance' | 'syllabus' | 'lesson_note' | 'data_health' | 'result_approvals'>('performance');
   const [selectedDateRange, setSelectedDateRange] = useState<'term1' | 'term2' | 'term3' | 'custom'>('term2');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [classSearch, setClassSearch] = useState('');
@@ -1118,6 +1148,25 @@ export function AdminDashboard() {
     venue: '',
     subjectOrPaper: '',
   });
+
+  // Result Approvals state
+  const [gradeWeightingConfigs, setGradeWeightingConfigs] = useState<GradeWeightingConfig[]>(() => {
+    try {
+      const stored = localStorage.getItem('teacher-dashboard:grade-weighting-configs');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [approvalFilters, setApprovalFilters] = useState({
+    status: '',
+    term: '',
+    teacherName: '',
+  });
+  const [selectedReviewConfig, setSelectedReviewConfig] = useState<GradeWeightingConfig | null>(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showRejectReasonModal, setShowRejectReasonModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   
   // Class-subject mapping state
   const [showMappingModal, setShowMappingModal] = useState(false);
@@ -2465,6 +2514,71 @@ export function AdminDashboard() {
     return 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-200';
   };
 
+  // ========== Result Approvals Helpers ==========
+  const gradebookStatusBadgeVariant = (status: GradebookStatus): 'draft' | 'submitted' | 'approved' | 'rejected' | 'default' => {
+    switch (status) {
+      case 'draft':
+        return 'draft';
+      case 'submitted':
+        return 'submitted';
+      case 'approved':
+        return 'approved';
+      case 'rejected':
+        return 'rejected';
+    }
+  };
+
+  const filteredApprovals = useMemo(() => {
+    return gradeWeightingConfigs.filter((config) => {
+      if (approvalFilters.status && config.status !== approvalFilters.status) return false;
+      if (approvalFilters.term && !config.term.includes(approvalFilters.term)) return false;
+      // We'll need to extract teacher name from somewhere - for now check class name as proxy
+      if (approvalFilters.teacherName && !config.className.toLowerCase().includes(approvalFilters.teacherName.toLowerCase())) return false;
+      return true;
+    });
+  }, [gradeWeightingConfigs, approvalFilters]);
+
+  const handleApproveGradebook = (config: GradeWeightingConfig) => {
+    const updated = gradeWeightingConfigs.map((c) =>
+      c.id === config.id
+        ? { ...c, status: 'approved' as GradebookStatus, updatedAt: new Date().toISOString() }
+        : c,
+    );
+    setGradeWeightingConfigs(updated);
+    localStorage.setItem('teacher-dashboard:grade-weighting-configs', JSON.stringify(updated));
+    setShowReviewModal(false);
+    alert('Gradebook approved and marked as Final for Parent Intelligence Platform.');
+  };
+
+  const handleRejectGradebook = () => {
+    if (!selectedReviewConfig || !rejectReason.trim()) {
+      alert('Please provide a reason for rejection.');
+      return;
+    }
+    const updated = gradeWeightingConfigs.map((c) =>
+      c.id === selectedReviewConfig.id
+        ? {
+            ...c,
+            status: 'rejected' as GradebookStatus,
+            rejectionReason: rejectReason,
+            updatedAt: new Date().toISOString(),
+          }
+        : c,
+    );
+    setGradeWeightingConfigs(updated);
+    localStorage.setItem('teacher-dashboard:grade-weighting-configs', JSON.stringify(updated));
+    setShowReviewModal(false);
+    setShowRejectReasonModal(false);
+    setRejectReason('');
+    alert('Gradebook rejected. Teacher will see feedback in their dashboard.');
+  };
+
+  const isWeightingCompliant = (config: GradeWeightingConfig): boolean => {
+    // Check if weights total 100% (allowing small floating-point variance)
+    const total = Object.values(config.categoryWeights).reduce((sum, weight) => sum + weight, 0);
+    return Math.abs(total - 100) < 0.1;
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Navigation Tabs */}
@@ -2489,6 +2603,9 @@ export function AdminDashboard() {
         </button>
         <button onClick={() => setActiveSection('data_health')} className={`px-4 py-2 ${activeSection === 'data_health' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
           <AlertTriangle size={16} className="inline mr-2" />Data Health
+        </button>
+        <button onClick={() => setActiveSection('result_approvals')} className={`px-4 py-2 ${activeSection === 'result_approvals' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
+          <CheckCircle size={16} className="inline mr-2" />Result Approvals
         </button>
       </div>
 
@@ -3016,6 +3133,283 @@ export function AdminDashboard() {
             </Card>
           </div>
         </div>
+      )}
+
+      {/* ========== RESULT APPROVALS ========== */}
+      {activeSection === 'result_approvals' && (
+        <div className="space-y-4">
+          <Card
+            title="Gradebook Submission Registry"
+            action={
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Filter by teacher name..."
+                  className="px-3 py-2 border border-border rounded text-sm bg-input-background"
+                  value={approvalFilters.teacherName}
+                  onChange={(e) => setApprovalFilters({ ...approvalFilters, teacherName: e.target.value })}
+                />
+                <select
+                  className="px-3 py-2 border border-border rounded text-sm bg-input-background"
+                  value={approvalFilters.status}
+                  onChange={(e) => setApprovalFilters({ ...approvalFilters, status: e.target.value as GradebookStatus | '' })}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+                <select
+                  className="px-3 py-2 border border-border rounded text-sm bg-input-background"
+                  value={approvalFilters.term}
+                  onChange={(e) => setApprovalFilters({ ...approvalFilters, term: e.target.value })}
+                >
+                  <option value="">All Terms</option>
+                  <option value="First Term">First Term</option>
+                  <option value="Second Term">Second Term</option>
+                  <option value="Third Term">Third Term</option>
+                </select>
+              </div>
+            }
+          >
+            {filteredApprovals.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <AlertCircle size={32} className="mx-auto mb-2 opacity-50" />
+                <p>No gradebooks match the current filters.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left">
+                      <th className="py-2 px-2">Teacher Name</th>
+                      <th className="py-2 px-2">Subject</th>
+                      <th className="py-2 px-2">Class</th>
+                      <th className="py-2 px-2">Term</th>
+                      <th className="py-2 px-2">Submission Date</th>
+                      <th className="py-2 px-2">Status</th>
+                      <th className="py-2 px-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredApprovals.map((config) => (
+                      <tr key={config.id} className="border-b border-border hover:bg-muted/30">
+                        <td className="py-3 px-2 font-medium">Teacher Name</td>
+                        <td className="py-3 px-2">{config.subject}</td>
+                        <td className="py-3 px-2">{config.className}</td>
+                        <td className="py-3 px-2">{config.term}</td>
+                        <td className="py-3 px-2">
+                          {config.submittedAt ? new Date(config.submittedAt).toLocaleDateString() : 'Not submitted'}
+                        </td>
+                        <td className="py-3 px-2">
+                          <Badge variant={gradebookStatusBadgeVariant(config.status)}>
+                            {config.status.charAt(0).toUpperCase() + config.status.slice(1)}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-2">
+                          {config.status === 'submitted' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedReviewConfig(config);
+                                setShowReviewModal(true);
+                              }}
+                            >
+                              <Eye size={14} className="mr-1" />
+                              Review
+                            </Button>
+                          )}
+                          {config.status === 'rejected' && (
+                            <div className="text-xs bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-200 px-2 py-1 rounded">
+                              {config.rejectionReason}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          <div className="text-xs text-muted-foreground p-3 bg-accent/20 rounded border border-border">
+            <p className="font-medium mb-1">About Result Approvals</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Submitted gradebooks appear in this registry for admin review.</li>
+              <li>Approval marks results as <strong>Final</strong> and makes them visible to the Parent Intelligence Platform.</li>
+              <li>Rejection sends feedback to the teacher to revise their weighting configuration.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Review Modal */}
+      {showReviewModal && selectedReviewConfig && (
+        <Modal
+          isOpen
+          onClose={() => {
+            setShowReviewModal(false);
+            setSelectedReviewConfig(null);
+          }}
+          title={`Review Gradebook: ${selectedReviewConfig.subject} - ${selectedReviewConfig.className}`}
+          footer={
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setShowReviewModal(false)}>
+                Close
+              </Button>
+              <Button variant="destructive" onClick={() => setShowRejectReasonModal(true)}>
+                <XCircle size={14} className="mr-1" />
+                Reject
+              </Button>
+              <Button onClick={() => handleApproveGradebook(selectedReviewConfig)}>
+                <CheckCircle size={14} className="mr-1" />
+                Approve
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-6">
+            {/* Weighting Summary */}
+            <div>
+              <h3 className="font-semibold mb-3">Weighting Summary</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {Object.entries(selectedReviewConfig.categoryWeights).map(([category, weight]) => (
+                  <div key={category} className="p-3 border border-border rounded">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">{category}</span>
+                      <span className="text-sm font-bold text-primary">{weight}%</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-blue-500" style={{ width: `${weight}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 p-3 rounded border border-border">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Total</span>
+                  <span className={`font-bold ${isWeightingCompliant(selectedReviewConfig) ? 'text-green-600' : 'text-red-600'}`}>
+                    {Object.values(selectedReviewConfig.categoryWeights).reduce((sum, w) => sum + w, 0).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Compliance Check */}
+            <div>
+              <h3 className="font-semibold mb-3">Compliance Check</h3>
+              <div className={`p-4 rounded border-2 ${isWeightingCompliant(selectedReviewConfig) ? 'border-green-200 bg-green-50 dark:bg-green-950/30' : 'border-red-200 bg-red-50 dark:bg-red-950/30'}`}>
+                <div className="flex items-start gap-2">
+                  {isWeightingCompliant(selectedReviewConfig) ? (
+                    <CheckCircle size={20} className="text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <p className="font-medium">
+                      {isWeightingCompliant(selectedReviewConfig) ? 'Weights are compliant (total 100%)' : 'Weights are NOT compliant (must total 100%)'}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {isWeightingCompliant(selectedReviewConfig)
+                        ? 'Teacher followed the weight policy requirement.'
+                        : 'Teacher weights do not sum to 100%. Request revision.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Grade Preview */}
+            <div>
+              <h3 className="font-semibold mb-3">Grade Preview (Sample)</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Estimated distribution based on mock assessments and these weights:
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border border-border rounded">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="p-2 text-left">Grade Band</th>
+                      <th className="p-2 text-right">With These Weights</th>
+                      <th className="p-2 text-right">Visual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { grade: 'A (70+)', estimate: '30%' },
+                      { grade: 'B (60-69)', estimate: '40%' },
+                      { grade: 'C (50-59)', estimate: '20%' },
+                      { grade: 'D (40-49)', estimate: '8%' },
+                      { grade: 'F (<40)', estimate: '2%' },
+                    ].map(({ grade, estimate }) => (
+                      <tr key={grade} className="border-t border-border">
+                        <td className="p-2">{grade}</td>
+                        <td className="p-2 text-right font-medium">{estimate}</td>
+                        <td className="p-2">
+                          <div className="h-2 rounded bg-muted overflow-hidden">
+                            <div className="h-full bg-green-500" style={{ width: estimate }} />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Admin Notes */}
+            <div className="p-3 bg-accent/20 rounded border border-border">
+              <p className="text-xs font-medium text-muted-foreground">
+                ℹ️ Once approved, this gradebook becomes visible to the Parent Intelligence Platform. Teachers cannot edit approved configurations.
+              </p>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Reject Reason Modal */}
+      {showRejectReasonModal && selectedReviewConfig && (
+        <Modal
+          isOpen
+          onClose={() => {
+            setShowRejectReasonModal(false);
+            setRejectReason('');
+          }}
+          title="Reject Gradebook"
+          footer={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowRejectReasonModal(false);
+                  setRejectReason('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleRejectGradebook} disabled={!rejectReason.trim()}>
+                Confirm Rejection
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">
+                <strong>Gradebook:</strong> {selectedReviewConfig.subject} - {selectedReviewConfig.className}
+              </p>
+              <p className="text-sm mb-3">Provide feedback for the teacher on why this gradebook was rejected:</p>
+              <textarea
+                className="w-full p-3 border border-border rounded bg-input-background text-sm min-h-[150px]"
+                placeholder="E.g., Weights do not total 100%, or weights do not align with school policy..."
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+              />
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* ========== SCHOOL SETUP ========== */}

@@ -2,11 +2,13 @@ import { Card } from '../Card';
 import { Button } from '../Button';
 import { Badge } from '../Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
+import { Switch } from '../ui/switch';
+import { Skeleton } from '../ui/skeleton';
 import { 
   BookOpen, Plus, FileText, ClipboardCheck, Activity,
   Clock, AlertCircle, CheckCircle, Search, Shield, Link2, Star, BarChart3, TrendingUp, ArrowLeft
 } from 'lucide-react';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../Modal';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -37,6 +39,14 @@ type SyllabusFormState = {
   lessonNotes: string;
 };
 
+type LessonNoteCreateFormState = {
+  className: string;
+  subject: string;
+  week: string;
+  title: string;
+  syllabusId: string;
+};
+
 type LessonNoteStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 
 type LessonNoteQuestion = {
@@ -59,18 +69,62 @@ type LessonNoteEntry = {
 };
 
 type AssessmentType = 'Quiz' | 'Test' | 'Assignment' | 'Exam';
-type AssessmentStatus = 'draft' | 'submitted' | 'approved';
+type AssessmentStatus = 'draft' | 'submitted' | 'approved' | 'graded';
+type GradebookStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+type GradeCategory = 'Homework' | 'Exercise' | 'Lab' | 'Test' | 'Exam';
+
+type AcademicTermOption = {
+  id: string;
+  label: string;
+};
+
+type GradeScaleBand = {
+  grade: string;
+  minimum: number;
+};
+
+type GradeWeightingConfig = {
+  id: string;
+  classId: string;
+  className: string;
+  subjectId: string;
+  subject: string;
+  termId: string;
+  term: string;
+  status: GradebookStatus;
+  submittedAt: string | null;
+  rejectionReason: string | null;
+  categoryWeights: Record<GradeCategory, number>;
+  assessmentMappings: Record<string, { category: GradeCategory; includeInCumulative: boolean }>;
+  updatedAt: string;
+};
 
 type AssessmentEntry = {
   id: string;
+  classId: string;
   className: string;
+  subjectId: string;
   subject: string;
+  termId: string;
+  term: string;
   title: string;
   type: AssessmentType;
+  category: GradeCategory;
   totalMarks: number;
   dueDate: string;
   status: AssessmentStatus;
   isCumulative: boolean;
+};
+
+type AssessmentCreateFormState = {
+  className: string;
+  subject: string;
+  title: string;
+  totalMarks: string;
+  type: AssessmentType;
+  status: AssessmentStatus;
+  isCumulative: boolean;
+  dueDate: string;
 };
 
 type AssessmentGradeRow = {
@@ -199,32 +253,47 @@ const studentsByClassName: Record<string, PerformanceStudent[]> = {
 const initialAssessments: AssessmentEntry[] = [
   {
     id: 'asm-math-10c-quiz-1',
+    classId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567819',
     className: 'Grade 10C',
+    subjectId: 'mathematics',
     subject: 'Mathematics',
+    termId: 'term-2',
+    term: 'Second Term',
     title: 'Algebra Quiz 1',
     type: 'Quiz',
+    category: 'Test',
     totalMarks: 20,
     dueDate: '2026-04-12',
-    status: 'draft',
+    status: 'graded',
     isCumulative: true,
   },
   {
     id: 'asm-math-10c-test-1',
+    classId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567819',
     className: 'Grade 10C',
+    subjectId: 'mathematics',
     subject: 'Mathematics',
+    termId: 'term-2',
+    term: 'Second Term',
     title: 'Linear Equations Test',
     type: 'Test',
+    category: 'Test',
     totalMarks: 40,
     dueDate: '2026-04-20',
-    status: 'submitted',
+    status: 'graded',
     isCumulative: true,
   },
   {
     id: 'asm-python-11a-ass-1',
+    classId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     className: 'Grade 11A',
+    subjectId: 'python',
     subject: 'Python',
+    termId: 'term-2',
+    term: 'Second Term',
     title: 'Functions Assignment',
     type: 'Assignment',
+    category: 'Homework',
     totalMarks: 30,
     dueDate: '2026-04-15',
     status: 'approved',
@@ -306,10 +375,238 @@ const createDashboardId = (prefix: string) =>
     ? `${prefix}-${crypto.randomUUID()}`
     : `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+const gradeCategories: GradeCategory[] = ['Homework', 'Exercise', 'Lab', 'Test', 'Exam'];
+
+const academicTerms: AcademicTermOption[] = [
+  { id: 'term-1', label: 'First Term' },
+  { id: 'term-2', label: 'Second Term' },
+  { id: 'term-3', label: 'Third Term' },
+];
+
+const globalSchoolSettings = {
+  gradeScale: [
+    { grade: 'A', minimum: 70 },
+    { grade: 'B', minimum: 60 },
+    { grade: 'C', minimum: 50 },
+    { grade: 'D', minimum: 40 },
+    { grade: 'F', minimum: 0 },
+  ] as GradeScaleBand[],
+};
+
+const defaultGradeWeights: Record<GradeCategory, number> = {
+  Homework: 20,
+  Exercise: 0,
+  Lab: 0,
+  Test: 40,
+  Exam: 40,
+};
+
+const gradeConfigStorageKey = 'teacher-dashboard:grade-weighting-configs';
+
+const normalizeTextId = (value: string) =>
+  value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+const getSubjectId = (subject: string) => normalizeTextId(subject);
+
+const getGradeConfigId = (classId: string, subjectId: string, termId: string) =>
+  `grade-config-${classId}-${subjectId}-${termId}`;
+
+const getGradeConfigKey = (classId: string, subjectId: string, termId: string) =>
+  `${classId}::${subjectId}::${termId}`;
+
+const getAcademicTermLabel = (termId: string) =>
+  academicTerms.find((term) => term.id === termId)?.label || termId;
+
+const getAcademicTermId = (termValue: string) =>
+  academicTerms.find((term) => term.label === termValue)?.id || termValue;
+
+const getClassMetaById = (classId: string) => teacherClasses.find((classItem) => classItem.id === classId) || null;
+
+const getSubjectLabelFromId = (classId: string, subjectId: string) => {
+  const classMeta = getClassMetaById(classId);
+  const subject = classMeta?.subjects.find((item) => getSubjectId(item) === subjectId);
+  return subject || subjectId;
+};
+
+const gradebookStatusToBadgeVariant = (status: GradebookStatus): 'draft' | 'pending' | 'approved' | 'rejected' => {
+  if (status === 'submitted') return 'pending';
+  return status;
+};
+
+const assessmentTypeToCategory: Record<AssessmentType, GradeCategory> = {
+  Quiz: 'Test',
+  Test: 'Test',
+  Assignment: 'Homework',
+  Exam: 'Exam',
+};
+
+const createEmptyAssessmentMappings = (assessments: AssessmentEntry[]) =>
+  Object.fromEntries(
+    assessments.map((assessment) => [
+      assessment.id,
+      {
+        category: assessment.category || assessmentTypeToCategory[assessment.type],
+        includeInCumulative: assessment.isCumulative,
+      },
+    ]),
+  ) as GradeWeightingConfig['assessmentMappings'];
+
+const buildDefaultGradeConfig = (
+  classId: string,
+  className: string,
+  subjectId: string,
+  subject: string,
+  termId: string,
+  term: string,
+  assessments: AssessmentEntry[],
+): GradeWeightingConfig => ({
+  id: getGradeConfigId(classId, subjectId, termId),
+  classId,
+  className,
+  subjectId,
+  subject,
+  termId,
+  term,
+  status: 'draft',
+  submittedAt: null,
+  rejectionReason: null,
+  categoryWeights: { ...defaultGradeWeights },
+  assessmentMappings: createEmptyAssessmentMappings(assessments),
+  updatedAt: new Date().toISOString(),
+});
+
+const normalizeGradeWeightingConfig = (config: any): GradeWeightingConfig | null => {
+  if (!config) return null;
+
+  const classMeta = teacherClasses.find((classItem) => classItem.id === config.classId || classItem.name === config.className) || null;
+  const classId = config.classId || classMeta?.id || '';
+  const className = config.className || classMeta?.name || '';
+  const subject = config.subject || config.subjectName || '';
+  const subjectId = config.subjectId || getSubjectId(subject);
+  const term = config.term || config.termName || '';
+  const termId = config.termId || getAcademicTermId(term);
+
+  if (!classId || !className || !subjectId || !subject || !termId || !term) return null;
+
+  return {
+    id: config.id || getGradeConfigId(classId, subjectId, termId),
+    classId,
+    className,
+    subjectId,
+    subject,
+    termId,
+    term,
+    status: config.status || 'draft',
+    submittedAt: config.submittedAt ?? null,
+    rejectionReason: config.rejectionReason ?? null,
+    categoryWeights: {
+      ...defaultGradeWeights,
+      ...(config.categoryWeights || {}),
+    },
+    assessmentMappings: config.assessmentMappings || {},
+    updatedAt: config.updatedAt || new Date().toISOString(),
+  };
+};
+
+const getLetterGrade = (average: number | null) => {
+  if (average === null) return 'N/A';
+
+  const matchedBand = globalSchoolSettings.gradeScale.find((band) => average >= band.minimum);
+  return matchedBand?.grade || 'N/A';
+};
+
+const calculateAssessmentAverage = (
+  assessments: AssessmentEntry[],
+  studentId: string,
+  config: GradeWeightingConfig,
+  getScoresForAssessment: (assessmentId: string) => Record<string, { score: number | null; feedback: string }>,
+) => {
+  const activeAssessments = assessments.filter((assessment) => {
+    const rule = config.assessmentMappings[assessment.id];
+    return (rule?.includeInCumulative ?? assessment.isCumulative) && assessment.status === 'graded';
+  });
+
+  if (!activeAssessments.length) return null;
+
+  let weightedSum = 0;
+  let includedWeight = 0;
+
+  gradeCategories.forEach((category) => {
+    const categoryAssessments = activeAssessments.filter((assessment) => {
+      const rule = config.assessmentMappings[assessment.id];
+      return (rule?.category ?? assessment.category) === category;
+    });
+
+    if (!categoryAssessments.length) return;
+
+    const studentScores = categoryAssessments
+      .map((assessment) => {
+        const score = getScoresForAssessment(assessment.id)[studentId]?.score;
+        if (typeof score !== 'number' || assessment.totalMarks <= 0) return null;
+        return (score / assessment.totalMarks) * 100;
+      })
+      .filter((score): score is number => score !== null);
+
+    if (!studentScores.length) return;
+
+    const categoryAverage = studentScores.reduce((sum, score) => sum + score, 0) / studentScores.length;
+    const categoryWeight = config.categoryWeights[category] || 0;
+
+    if (categoryWeight <= 0) return;
+
+    weightedSum += categoryAverage * categoryWeight;
+    includedWeight += categoryWeight;
+  });
+
+  if (!includedWeight) return null;
+  return Math.round((weightedSum / includedWeight) * 100) / 100;
+};
+
+type GenericEntryModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  submitLabel: string;
+  onSubmit: () => void;
+  submitDisabled?: boolean;
+  children: ReactNode;
+};
+
+function GenericEntryModal({
+  isOpen,
+  onClose,
+  title,
+  submitLabel,
+  onSubmit,
+  submitDisabled = false,
+  children,
+}: GenericEntryModalProps) {
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={onSubmit} disabled={submitDisabled}>
+            {submitLabel}
+          </Button>
+        </>
+      }
+    >
+      {children}
+    </Modal>
+  );
+}
+
 
 export function TeacherDashboard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const gradeConfigurationTopRef = useRef<HTMLDivElement | null>(null);
   const emptySyllabusForm: SyllabusFormState = {
     className: '',
     subject: '',
@@ -318,11 +615,32 @@ export function TeacherDashboard() {
     content: '',
     lessonNotes: '0',
   };
+  const emptyLessonNoteCreateForm: LessonNoteCreateFormState = {
+    className: '',
+    subject: '',
+    week: '',
+    title: '',
+    syllabusId: '',
+  };
+  const emptyAssessmentCreateForm: AssessmentCreateFormState = {
+    className: '',
+    subject: '',
+    title: '',
+    totalMarks: '',
+    type: 'Test',
+    status: 'draft',
+    isCumulative: true,
+    dueDate: new Date().toISOString().slice(0, 10),
+  };
 
-  const [activeTab, setActiveTab] = useState<'todays_classes' | 'class' | 'syllabus' | 'lesson_notes' | 'assessment' | 'performance' | 'medical' | 'pickup'>('todays_classes');
+  const [activeTab, setActiveTab] = useState<'todays_classes' | 'class' | 'syllabus' | 'lesson_notes' | 'assessment' | 'grade_configuration' | 'performance' | 'medical' | 'pickup'>('todays_classes');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('2025/2026 Term 2');
+  const [selectedGradeClassId, setSelectedGradeClassId] = useState(() => teacherClasses[0]?.id || '');
+  const [selectedGradeSubjectId, setSelectedGradeSubjectId] = useState(() => getSubjectId(teacherClasses[0]?.subjects[0] || ''));
+  const [selectedGradeTermId, setSelectedGradeTermId] = useState('term-2');
+  const [gradeContextLoading, setGradeContextLoading] = useState(true);
   const [activeClass, setActiveClass] = useState(null);
   const [syllabusWeeks, setSyllabusWeeks] = useState<SyllabusEntry[]>(() => loadStoredArray('teacher-dashboard:syllabus-weeks', initialSyllabusWeeks));
   const [dailyActivityStatus, setDailyActivityStatus] = useState<Record<string, DailyActivityStatus>>({});
@@ -333,11 +651,19 @@ export function TeacherDashboard() {
   const [currentLessonNoteEntry, setCurrentLessonNoteEntry] = useState<LessonNoteEntry | null>(null);
   const [currentLessonNoteSyllabusId, setCurrentLessonNoteSyllabusId] = useState('');
   const [lessonNoteForm, setLessonNoteForm] = useState<{ content: string }>({ content: '' });
+  const [showCreateLessonNoteModal, setShowCreateLessonNoteModal] = useState(false);
+  const [lessonNoteCreateForm, setLessonNoteCreateForm] = useState<LessonNoteCreateFormState>(emptyLessonNoteCreateForm);
   const [focusedLessonNoteId, setFocusedLessonNoteId] = useState<string | null>(null);
   const [lessonNotesByContext, setLessonNotesByContext] = useState<LessonNoteEntry[]>(() => loadStoredArray('teacher-dashboard:lesson-notes', initialLessonNotesByContext));
   const [assessments, setAssessments] = useState<AssessmentEntry[]>(initialAssessments);
   const [assessmentView, setAssessmentView] = useState<'list' | 'grading' | 'analytics'>('list');
   const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
+  const [showAssessmentModal, setShowAssessmentModal] = useState(false);
+  const [assessmentForm, setAssessmentForm] = useState<AssessmentCreateFormState>(emptyAssessmentCreateForm);
+  const [gradeWeightingConfigs, setGradeWeightingConfigs] = useState<GradeWeightingConfig[]>(() =>
+    loadStoredArray(gradeConfigStorageKey, []).map(normalizeGradeWeightingConfig).filter((config): config is GradeWeightingConfig => Boolean(config)),
+  );
+  const [gradeConfigDraft, setGradeConfigDraft] = useState<GradeWeightingConfig | null>(null);
   const [assessmentGrades, setAssessmentGrades] = useState<Record<string, Record<string, { score: number | null; feedback: string }>>>(() => {
     const seeded: Record<string, Record<string, { score: number | null; feedback: string }>> = {};
 
@@ -347,7 +673,7 @@ export function TeacherDashboard() {
         students.map((student, index) => [
           student.id,
           {
-            score: assessment.status === 'approved' ? Math.round(assessment.totalMarks * (0.55 + index * 0.1)) : null,
+            score: assessment.status === 'approved' || assessment.status === 'graded' ? Math.round(assessment.totalMarks * (0.55 + index * 0.1)) : null,
             feedback: '',
           },
         ]),
@@ -381,9 +707,26 @@ export function TeacherDashboard() {
   const filteredLessonNotes = lessonNotesByContext.filter(
     (note) => note.className === selectedClass && note.subject === selectedSubject
   );
-  const filteredAssessments = assessments.filter(
-    (assessment) => assessment.className === selectedClass && assessment.subject === selectedSubject,
+  const selectedGradeClassMeta = teacherClasses.find((classItem) => classItem.id === selectedGradeClassId) || null;
+  const selectedGradeSubjectLabel = selectedGradeClassMeta?.subjects.find((subject) => getSubjectId(subject) === selectedGradeSubjectId) || '';
+  const selectedGradeTerm = academicTerms.find((term) => term.id === selectedGradeTermId) || academicTerms[0];
+  const gradeSubjectOptions = teacherClasses.flatMap((classItem) =>
+    classItem.subjects.map((subject) => ({
+      classId: classItem.id,
+      className: classItem.name,
+      subjectId: getSubjectId(subject),
+      subject,
+      label: `${classItem.name} • ${subject}`,
+    })),
   );
+  const selectedGradeOption = gradeSubjectOptions.find(
+    (option) => option.classId === selectedGradeClassId && option.subjectId === selectedGradeSubjectId,
+  ) || null;
+  const selectedGradeClassStudents = selectedGradeClassMeta ? studentsByClassName[selectedGradeClassMeta.name] || [] : [];
+  const filteredAssessments = assessments.filter(
+    (assessment) => assessment.classId === selectedGradeClassId && assessment.subjectId === selectedGradeSubjectId && assessment.termId === selectedGradeTermId,
+  );
+  const gradedAssessments = filteredAssessments.filter((assessment) => assessment.status === 'graded');
   const selectedAssessment = selectedAssessmentId
     ? filteredAssessments.find((assessment) => assessment.id === selectedAssessmentId) || null
     : null;
@@ -401,6 +744,15 @@ export function TeacherDashboard() {
           week.subject === currentLessonNoteEntry.subject,
       )
     : [];
+    const lessonNoteCreateSubjects = teacherClasses.find((classItem) => classItem.name === lessonNoteCreateForm.className)?.subjects || [];
+    const approvedSyllabusOptionsForNewLessonNote = lessonNoteCreateForm.className && lessonNoteCreateForm.subject
+      ? syllabusWeeks.filter(
+          (week) =>
+            week.status === 'approved' &&
+            week.className === lessonNoteCreateForm.className &&
+            week.subject === lessonNoteCreateForm.subject,
+        )
+      : [];
 
   const getScoresForAssessment = (assessmentId: string) => {
     return assessmentGrades[assessmentId] || {};
@@ -483,6 +835,143 @@ export function TeacherDashboard() {
     ? Object.values(monthlyNarratives[selectedPerformanceStudent.id] || {})
     : [];
 
+  const selectedGradeConfig = useMemo(() => {
+    if (!selectedGradeClassId || !selectedGradeSubjectId || !selectedGradeTermId) return null;
+
+    return gradeWeightingConfigs.find(
+      (config) => config.classId === selectedGradeClassId && config.subjectId === selectedGradeSubjectId && config.termId === selectedGradeTermId,
+    ) || null;
+  }, [gradeWeightingConfigs, selectedGradeClassId, selectedGradeSubjectId, selectedGradeTermId]);
+
+  const gradebookStatus = gradeConfigDraft?.status || selectedGradeConfig?.status || 'draft';
+  const isGradebookLocked = gradebookStatus !== 'draft';
+  const gradebookBadgeVariant = gradebookStatusToBadgeVariant(gradebookStatus);
+
+  const gradeConfigRows = useMemo(() => {
+    const config = gradeConfigDraft || selectedGradeConfig || buildDefaultGradeConfig(
+      selectedGradeClassId,
+      selectedGradeClassMeta?.name || '',
+      selectedGradeSubjectId,
+      selectedGradeSubjectLabel,
+      selectedGradeTermId,
+      selectedGradeTerm.label,
+      gradedAssessments,
+    );
+
+    return gradedAssessments.map((assessment) => {
+      const mappedRule = config.assessmentMappings[assessment.id];
+      return {
+        ...assessment,
+        category: mappedRule?.category ?? assessment.category,
+        includeInCumulative: mappedRule?.includeInCumulative ?? assessment.isCumulative,
+      };
+    });
+  }, [gradeConfigDraft, gradedAssessments, selectedGradeClassId, selectedGradeClassMeta?.name, selectedGradeConfig, selectedGradeSubjectId, selectedGradeSubjectLabel, selectedGradeTerm.label, selectedGradeTermId]);
+
+  const gradeConfigTotalWeight = useMemo(() => {
+    const config = gradeConfigDraft || selectedGradeConfig || buildDefaultGradeConfig(
+      selectedGradeClassId,
+      selectedGradeClassMeta?.name || '',
+      selectedGradeSubjectId,
+      selectedGradeSubjectLabel,
+      selectedGradeTermId,
+      selectedGradeTerm.label,
+      gradedAssessments,
+    );
+    return gradeCategories.reduce((sum, category) => sum + (Number(config.categoryWeights[category]) || 0), 0);
+  }, [gradeConfigDraft, gradedAssessments, selectedGradeClassId, selectedGradeClassMeta?.name, selectedGradeConfig, selectedGradeSubjectId, selectedGradeSubjectLabel, selectedGradeTerm.label, selectedGradeTermId]);
+
+  const classGradePreviewRows = useMemo(() => {
+    const config = gradeConfigDraft || selectedGradeConfig || buildDefaultGradeConfig(
+      selectedGradeClassId,
+      selectedGradeClassMeta?.name || '',
+      selectedGradeSubjectId,
+      selectedGradeSubjectLabel,
+      selectedGradeTermId,
+      selectedGradeTerm.label,
+      gradedAssessments,
+    );
+
+    return selectedGradeClassStudents.map((student) => {
+      const weightedAverage = calculateAssessmentAverage(
+        gradeConfigRows,
+        student.id,
+        config,
+        getScoresForAssessment,
+      );
+
+      return {
+        id: student.id,
+        name: student.name,
+        weightedAverage,
+        letterGrade: getLetterGrade(weightedAverage),
+      };
+    });
+  }, [gradeConfigDraft, gradeConfigRows, gradedAssessments, selectedGradeClassStudents, selectedGradeClassId, selectedGradeClassMeta?.name, selectedGradeConfig, selectedGradeSubjectId, selectedGradeSubjectLabel, selectedGradeTerm.label, selectedGradeTermId]);
+
+  const selectedGradeConfigSaved = Boolean(selectedGradeConfig);
+
+  const teacherGradebookCombinations = useMemo(
+    () =>
+      teacherClasses.flatMap((classItem) =>
+        classItem.subjects.map((subject) => ({
+          classId: classItem.id,
+          className: classItem.name,
+          subjectId: getSubjectId(subject),
+          subject,
+          configKey: getGradeConfigKey(classItem.id, getSubjectId(subject), selectedGradeTermId),
+        })),
+      ),
+    [selectedGradeTermId],
+  );
+
+  const gradebookSubmissionRows = useMemo(
+    () =>
+      teacherGradebookCombinations.map((combo) => {
+        const matchingConfig = gradeWeightingConfigs.find(
+          (config) =>
+            config.classId === combo.classId &&
+            config.subjectId === combo.subjectId &&
+            config.termId === selectedGradeTermId,
+        );
+
+        return {
+          ...combo,
+          config: matchingConfig || null,
+          status: (matchingConfig?.status || 'draft') as GradebookStatus,
+          submissionDate: matchingConfig?.submittedAt || null,
+          adminFeedback: matchingConfig?.rejectionReason || '',
+        };
+      }),
+    [gradeWeightingConfigs, selectedGradeTermId, teacherGradebookCombinations],
+  );
+
+  const hasStartedGradebooksForTerm = useMemo(
+    () => gradebookSubmissionRows.some((row) => row.config),
+    [gradebookSubmissionRows],
+  );
+
+  useEffect(() => {
+    if (!teacherClasses.length) return;
+
+    if (!selectedGradeClassId || !teacherClasses.some((classItem) => classItem.id === selectedGradeClassId)) {
+      const firstClass = teacherClasses[0];
+      setSelectedGradeClassId(firstClass.id);
+      setSelectedGradeSubjectId(getSubjectId(firstClass.subjects[0] || ''));
+      return;
+    }
+
+    if (!selectedGradeSubjectId || !selectedGradeClassMeta?.subjects.some((subject) => getSubjectId(subject) === selectedGradeSubjectId)) {
+      setSelectedGradeSubjectId(getSubjectId(selectedGradeClassMeta?.subjects[0] || ''));
+    }
+  }, [selectedGradeClassId, selectedGradeClassMeta, selectedGradeSubjectId]);
+
+  useEffect(() => {
+    setGradeContextLoading(true);
+    const loadingTimer = window.setTimeout(() => setGradeContextLoading(false), 180);
+    return () => window.clearTimeout(loadingTimer);
+  }, [selectedGradeClassId, selectedGradeSubjectId, selectedGradeTermId]);
+
   useEffect(() => {
     const restored = location.state as { activeTab?: string; selectedClass?: string; selectedSubject?: string } | null;
     if (!restored) return;
@@ -497,6 +986,63 @@ export function TeacherDashboard() {
       setSelectedSubject(restored.selectedSubject);
     }
   }, [location.state]);
+
+  useEffect(() => {
+    if (location.state || selectedClass || !teacherClasses.length) return;
+
+    const firstClass = teacherClasses[0];
+    setSelectedClass(firstClass.name);
+    setSelectedSubject(firstClass.subjects[0] || '');
+  }, [location.state, selectedClass]);
+
+  useEffect(() => {
+    if (!selectedClass || selectedSubject || !selectedClassSubjects.length) return;
+
+    setSelectedSubject(selectedClassSubjects[0]);
+  }, [selectedClass, selectedClassSubjects, selectedSubject]);
+
+  useEffect(() => {
+    if (!selectedGradeClassId || !selectedGradeSubjectId || !selectedGradeTermId) {
+      setGradeConfigDraft(null);
+      return;
+    }
+
+    const existingConfig = gradeWeightingConfigs.find(
+      (config) => config.classId === selectedGradeClassId && config.subjectId === selectedGradeSubjectId && config.termId === selectedGradeTermId,
+    );
+
+    if (existingConfig) {
+      const selectedConfigRows = assessments
+        .filter((assessment) => assessment.classId === selectedGradeClassId && assessment.subjectId === selectedGradeSubjectId && assessment.termId === selectedGradeTermId && assessment.status === 'graded')
+        .map((assessment) => ({
+          ...assessment,
+          category: existingConfig.assessmentMappings[assessment.id]?.category ?? assessment.category,
+          isCumulative: existingConfig.assessmentMappings[assessment.id]?.includeInCumulative ?? assessment.isCumulative,
+        }));
+
+      setGradeConfigDraft({
+        ...existingConfig,
+        assessmentMappings: createEmptyAssessmentMappings(selectedConfigRows.length ? selectedConfigRows : gradedAssessments),
+      });
+      return;
+    }
+
+    setGradeConfigDraft(buildDefaultGradeConfig(
+      selectedGradeClassId,
+      selectedGradeClassMeta?.name || '',
+      selectedGradeSubjectId,
+      selectedGradeSubjectLabel,
+      selectedGradeTermId,
+      selectedGradeTerm.label,
+      gradedAssessments,
+    ));
+  }, [gradeWeightingConfigs, assessments, gradedAssessments, selectedGradeClassId, selectedGradeClassMeta?.name, selectedGradeSubjectId, selectedGradeSubjectLabel, selectedGradeTerm.label, selectedGradeTermId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    window.localStorage.setItem(gradeConfigStorageKey, JSON.stringify(gradeWeightingConfigs));
+  }, [gradeWeightingConfigs]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -542,7 +1088,203 @@ export function TeacherDashboard() {
 
   const handleClassFilterChange = (className: string) => {
     setSelectedClass(className);
-    setSelectedSubject('');
+    const nextSubjects = teacherClasses.find((classItem) => classItem.name === className)?.subjects || [];
+    setSelectedSubject(nextSubjects[0] || '');
+  };
+
+  const handleGradeContextChange = (value: string) => {
+    const [classId, subjectId] = value.split('::');
+    if (!classId || !subjectId) return;
+
+    setSelectedGradeClassId(classId);
+    setSelectedGradeSubjectId(subjectId);
+  };
+
+  const handleGradeTermChange = (termId: string) => {
+    setSelectedGradeTermId(termId);
+  };
+
+  const handleViewEditGradebook = (classId: string, subjectId: string) => {
+    setSelectedGradeClassId(classId);
+    setSelectedGradeSubjectId(subjectId);
+    gradeConfigurationTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleDownloadGradebookReport = (config: GradeWeightingConfig) => {
+    const configAssessments = assessments
+      .filter(
+        (assessment) =>
+          assessment.classId === config.classId &&
+          assessment.subjectId === config.subjectId &&
+          assessment.termId === config.termId &&
+          assessment.status === 'graded',
+      )
+      .map((assessment) => {
+        const mapping = config.assessmentMappings[assessment.id];
+        return {
+          ...assessment,
+          category: mapping?.category ?? assessment.category,
+          isCumulative: mapping?.includeInCumulative ?? assessment.isCumulative,
+        };
+      });
+
+    const students = studentsByClassName[config.className] || [];
+    const reportRows = students.map((student) => {
+      const weightedAverage = calculateAssessmentAverage(
+        configAssessments,
+        student.id,
+        config,
+        getScoresForAssessment,
+      );
+      const letter = getLetterGrade(weightedAverage);
+      return `<tr><td style="padding:8px;border:1px solid #ddd;">${student.name}</td><td style="padding:8px;border:1px solid #ddd;">${weightedAverage === null ? 'N/A' : `${weightedAverage}%`}</td><td style="padding:8px;border:1px solid #ddd;">${letter}</td></tr>`;
+    });
+
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) return;
+
+    reportWindow.document.write(`
+      <html>
+        <head><title>Gradebook Report - ${config.subject} ${config.className}</title></head>
+        <body style="font-family: Arial, sans-serif; padding: 24px;">
+          <h2>Gradebook Report</h2>
+          <p><strong>Class:</strong> ${config.className}</p>
+          <p><strong>Subject:</strong> ${config.subject}</p>
+          <p><strong>Term:</strong> ${config.term}</p>
+          <p><strong>Status:</strong> ${config.status}</p>
+          <table style="border-collapse: collapse; width: 100%; margin-top: 16px;">
+            <thead>
+              <tr>
+                <th style="padding:8px;border:1px solid #ddd;text-align:left;">Student</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:left;">Weighted Average</th>
+                <th style="padding:8px;border:1px solid #ddd;text-align:left;">Letter Grade</th>
+              </tr>
+            </thead>
+            <tbody>${reportRows.join('')}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    reportWindow.document.close();
+    reportWindow.focus();
+    reportWindow.print();
+  };
+
+  const isGradeConfigEditable = gradebookStatus === 'draft';
+
+  const commitGradeConfig = (nextConfig: GradeWeightingConfig) => {
+    setGradeConfigDraft(nextConfig);
+    setGradeWeightingConfigs((prev) => {
+      const otherConfigs = prev.filter(
+        (config) => getGradeConfigKey(config.classId, config.subjectId, config.termId) !== getGradeConfigKey(nextConfig.classId, nextConfig.subjectId, nextConfig.termId),
+      );
+
+      return [...otherConfigs, nextConfig];
+    });
+  };
+
+  const updateGradeConfigCategoryWeight = (category: GradeCategory, value: string) => {
+    if (!isGradeConfigEditable) return;
+
+    const nextWeight = Math.max(0, Math.min(100, Number(value) || 0));
+
+    setGradeConfigDraft((current) => {
+      if (!current) return current;
+
+      return {
+        ...current,
+        categoryWeights: {
+          ...current.categoryWeights,
+          [category]: nextWeight,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  };
+
+  const updateGradeConfigAssessment = (assessmentId: string, patch: Partial<{ category: GradeCategory; includeInCumulative: boolean }>) => {
+    if (!isGradeConfigEditable) return;
+
+    setGradeConfigDraft((current) => {
+      if (!current) return current;
+
+      const existingAssessment = assessments.find((assessment) => assessment.id === assessmentId);
+      const currentMapping = current.assessmentMappings[assessmentId] || {
+        category: existingAssessment?.category || assessmentTypeToCategory[existingAssessment?.type || 'Test'],
+        includeInCumulative: existingAssessment?.isCumulative ?? true,
+      };
+
+      return {
+        ...current,
+        assessmentMappings: {
+          ...current.assessmentMappings,
+          [assessmentId]: {
+            ...currentMapping,
+            ...patch,
+          },
+        },
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    if (patch.category || typeof patch.includeInCumulative === 'boolean') {
+      setAssessments((prev) =>
+        prev.map((assessment) =>
+          assessment.id === assessmentId
+            ? {
+                ...assessment,
+                category: patch.category ?? assessment.category,
+                isCumulative: patch.includeInCumulative ?? assessment.isCumulative,
+              }
+            : assessment,
+        ),
+      );
+    }
+  };
+
+  const handleSaveGradeConfig = () => {
+    if (!gradeConfigDraft || !isGradeConfigEditable) return;
+
+    if (gradeConfigTotalWeight !== 100) {
+      alert('The category weights must total exactly 100% before saving.');
+      return;
+    }
+
+    const nextConfig: GradeWeightingConfig = {
+      ...gradeConfigDraft,
+      updatedAt: new Date().toISOString(),
+    };
+
+    commitGradeConfig(nextConfig);
+
+    alert('Grade configuration saved successfully.');
+  };
+
+  const handleSubmitGradeConfigForApproval = () => {
+    if (!gradeConfigDraft || gradeConfigTotalWeight !== 100 || !isGradeConfigEditable) return;
+
+    const nextConfig: GradeWeightingConfig = {
+      ...gradeConfigDraft,
+      status: 'submitted',
+      submittedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    commitGradeConfig(nextConfig);
+    alert('Grade configuration submitted for approval.');
+  };
+
+  const handleRevertGradeConfigToDraft = () => {
+    if (!gradeConfigDraft || gradebookStatus !== 'rejected') return;
+
+    const nextConfig: GradeWeightingConfig = {
+      ...gradeConfigDraft,
+      status: 'draft',
+      rejectionReason: null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    commitGradeConfig(nextConfig);
   };
 
   const handleOpenTeachingConsole = (classId: string) => {
@@ -587,6 +1329,34 @@ export function TeacherDashboard() {
     setShowNewSyllabusModal(false);
     setCurrentSyllabusEntry(null);
     resetSyllabusForm();
+  };
+
+  const openLessonNoteCreateModal = () => {
+    setLessonNoteCreateForm({
+      ...emptyLessonNoteCreateForm,
+      className: selectedClass,
+      subject: selectedSubject,
+    });
+    setShowCreateLessonNoteModal(true);
+  };
+
+  const closeLessonNoteCreateModal = () => {
+    setShowCreateLessonNoteModal(false);
+    setLessonNoteCreateForm(emptyLessonNoteCreateForm);
+  };
+
+  const openAssessmentCreateModal = () => {
+    setAssessmentForm({
+      ...emptyAssessmentCreateForm,
+      className: selectedClass,
+      subject: selectedSubject,
+    });
+    setShowAssessmentModal(true);
+  };
+
+  const closeAssessmentModal = () => {
+    setShowAssessmentModal(false);
+    setAssessmentForm(emptyAssessmentCreateForm);
   };
 
   const closeLessonNoteModal = () => {
@@ -760,6 +1530,110 @@ export function TeacherDashboard() {
     closeLessonNoteModal();
   };
 
+  const handleCreateLessonNote = () => {
+    if (
+      !lessonNoteCreateForm.className ||
+      !lessonNoteCreateForm.subject ||
+      !lessonNoteCreateForm.week ||
+      !lessonNoteCreateForm.title.trim() ||
+      !lessonNoteCreateForm.syllabusId
+    ) {
+      return;
+    }
+
+    const linkedSyllabus = syllabusWeeks.find((week) => week.id === lessonNoteCreateForm.syllabusId && week.status === 'approved') || null;
+    if (!linkedSyllabus) return;
+
+    const newLessonNote: LessonNoteEntry = {
+      id: createDashboardId('ln'),
+      syllabusId: linkedSyllabus.id,
+      createdBy: currentTeacherId,
+      className: lessonNoteCreateForm.className,
+      subject: lessonNoteCreateForm.subject,
+      week: Number(lessonNoteCreateForm.week),
+      title: lessonNoteCreateForm.title.trim(),
+      content: linkedSyllabus.content || lessonNoteCreateForm.title.trim(),
+      noteStatus: 'draft',
+      questions: [],
+    };
+
+    setLessonNotesByContext((prev) => [...prev, newLessonNote]);
+    setSyllabusWeeks((prev) =>
+      prev.map((week) =>
+        week.id === linkedSyllabus.id
+          ? {
+              ...week,
+              lessonNoteId: newLessonNote.id,
+              lessonNotes: (week.lessonNotes || 0) + 1,
+            }
+          : week,
+      ),
+    );
+
+    setSelectedClass(newLessonNote.className);
+    setSelectedSubject(newLessonNote.subject);
+    setActiveTab('lesson_notes');
+    setFocusedLessonNoteId(newLessonNote.id);
+    closeLessonNoteCreateModal();
+    navigate(`/teaching-console/lesson-editor/${newLessonNote.id}`, {
+      state: {
+        selectedClass: newLessonNote.className,
+        selectedSubject: newLessonNote.subject,
+        note: newLessonNote,
+        syllabusId: linkedSyllabus.id,
+      },
+    });
+  };
+
+  const handleCreateAssessment = () => {
+    if (
+      !assessmentForm.className ||
+      !assessmentForm.subject ||
+      !assessmentForm.title.trim() ||
+      !assessmentForm.totalMarks.trim() ||
+      !assessmentForm.dueDate
+    ) {
+      return;
+    }
+
+    const totalMarks = Number(assessmentForm.totalMarks);
+    if (Number.isNaN(totalMarks) || totalMarks <= 0) return;
+
+    const classMeta = teacherClasses.find((classItem) => classItem.name === assessmentForm.className) || null;
+    const termMeta = academicTerms.find((term) => term.id === selectedGradeTermId) || academicTerms[0];
+
+    const newAssessment: AssessmentEntry = {
+      id: createDashboardId('asm'),
+      classId: classMeta?.id || '',
+      className: assessmentForm.className,
+      subjectId: getSubjectId(assessmentForm.subject),
+      subject: assessmentForm.subject,
+      termId: termMeta.id,
+      term: termMeta.label,
+      title: assessmentForm.title.trim(),
+      type: assessmentForm.type,
+      category: assessmentTypeToCategory[assessmentForm.type],
+      totalMarks,
+      dueDate: assessmentForm.dueDate,
+      status: assessmentForm.status,
+      isCumulative: assessmentForm.isCumulative,
+    };
+
+    setAssessments((prev) => [...prev, newAssessment]);
+    setAssessmentGrades((prev) => ({
+      ...prev,
+      [newAssessment.id]: Object.fromEntries(
+        (studentsByClassName[newAssessment.className] || []).map((student) => [
+          student.id,
+          { score: null, feedback: '' },
+        ]),
+      ),
+    }));
+    setAssessmentView('list');
+    setSelectedAssessmentId(null);
+    closeAssessmentModal();
+  };
+
   const handleDeleteLessonNote = (noteId: string) => {
     setLessonNotesByContext((prev) => prev.filter((note) => note.id !== noteId));
     setSyllabusWeeks((prev) =>
@@ -873,6 +1747,17 @@ export function TeacherDashboard() {
       return;
     }
 
+    setAssessments((prev) =>
+      prev.map((assessment) =>
+        assessment.id === selectedAssessment.id
+          ? {
+              ...assessment,
+              status: 'graded',
+            }
+          : assessment,
+      ),
+    );
+
     setGradeValidationError('');
     alert('Grades saved successfully.');
   };
@@ -890,32 +1775,7 @@ export function TeacherDashboard() {
     );
   };
 
-  const handleCreateFirstAssessment = () => {
-    if (!selectedClass || !selectedSubject) return;
-
-    const newAssessment: AssessmentEntry = {
-      id: `asm-${crypto.randomUUID()}`,
-      className: selectedClass,
-      subject: selectedSubject,
-      title: `${selectedSubject} New Assessment`,
-      type: 'Quiz',
-      totalMarks: 20,
-      dueDate: new Date().toISOString().slice(0, 10),
-      status: 'draft',
-      isCumulative: false,
-    };
-
-    setAssessments((prev) => [...prev, newAssessment]);
-    setAssessmentGrades((prev) => ({
-      ...prev,
-      [newAssessment.id]: Object.fromEntries(
-        (studentsByClassName[selectedClass] || []).map((student) => [
-          student.id,
-          { score: null, feedback: '' },
-        ]),
-      ),
-    }));
-  };
+  const handleCreateFirstAssessment = openAssessmentCreateModal;
 
   const handleSaveMonthlyNarrative = () => {
     if (!selectedPerformanceStudent || !narrativeComment.trim()) return;
@@ -953,6 +1813,9 @@ export function TeacherDashboard() {
         </button>
         <button onClick={() => setActiveTab('assessment')} className={`px-4 py-2 ${activeTab === 'assessment' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
           Assessment
+        </button>
+        <button onClick={() => setActiveTab('grade_configuration')} className={`px-4 py-2 ${activeTab === 'grade_configuration' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
+          Grade Configuration &amp; Cumulative
         </button>
         <button onClick={() => setActiveTab('performance')} className={`px-4 py-2 ${activeTab === 'performance' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
           Performance
@@ -1191,9 +2054,164 @@ export function TeacherDashboard() {
       )}
 
       {activeTab === 'lesson_notes' && (
-        <div className="space-y-4">
-          <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Card
+          title="Lesson Notes"
+          action={
+            <Button size="sm" variant="primary" onClick={openLessonNoteCreateModal}>
+              <Plus size={16} className="mr-2" />Add New
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border border-border rounded-lg p-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-2 text-sm text-muted-foreground">Class</label>
+                  <select
+                    value={selectedClass}
+                    onChange={(e) => handleClassFilterChange(e.target.value)}
+                    className="w-full p-2 border border-border rounded-lg bg-input-background"
+                  >
+                    <option value="">Select class</option>
+                    {classOptions.map((className) => (
+                      <option key={className} value={className}>{className}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block mb-2 text-sm text-muted-foreground">Subject</label>
+                  <select
+                    value={selectedSubject}
+                    onChange={(e) => setSelectedSubject(e.target.value)}
+                    className="w-full p-2 border border-border rounded-lg bg-input-background"
+                    disabled={!selectedClass}
+                  >
+                    <option value="">Select subject</option>
+                    {selectedClassSubjects.map((subject) => (
+                      <option key={subject} value={subject}>{subject}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {!selectedClass || !selectedSubject || filteredLessonNotes.length === 0 ? (
+              <div className="min-h-[260px] flex flex-col items-center justify-center gap-4 border border-dashed border-border rounded-lg text-center text-muted-foreground">
+                <div>
+                  <p className="font-medium text-foreground">No lesson notes to display</p>
+                  <p className="text-sm">Select a class and subject, or create a new lesson note.</p>
+                </div>
+                <Button size="sm" variant="primary" onClick={openLessonNoteCreateModal}>
+                  <Plus size={14} className="mr-2" />Add New
+                </Button>
+              </div>
+            ) : (
+              <>
+                {focusedLinkedSyllabus && (
+                  <div className="mb-4 p-3 rounded-lg border border-border bg-accent/20">
+                    <Badge variant="approved">
+                      Linked to Syllabus: Week {focusedLinkedSyllabus.week} - {focusedLinkedSyllabus.title}
+                    </Badge>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="w-[60px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Week</th>
+                        <th className="py-3 px-4 align-middle text-left text-xs uppercase text-muted-foreground">Topic / Title</th>
+                        <th className="w-[120px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Syllabus</th>
+                        <th className="w-[120px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Note</th>
+                        <th className="w-[80px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Qns</th>
+                        <th className="w-[100px] text-right py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredLessonNotes.map((note) => {
+                        const linkedSyllabus = syllabusByWeek.get(note.week);
+                        const isSyllabusApproved = linkedSyllabus?.status === 'approved';
+                        const isNoteApproved = note.noteStatus === 'approved';
+
+                        return (
+                          <Fragment key={note.id}>
+                            <tr
+                              id={`lesson-note-row-${note.id}`}
+                              key={note.id}
+                              onClick={() => {
+                                navigate(`/teaching-console/lesson-editor/${note.id}?className=${encodeURIComponent(selectedClass)}&subject=${encodeURIComponent(selectedSubject)}`, {
+                                  state: { selectedClass, selectedSubject, note },
+                                });
+                              }}
+                              className={`border-b border-border cursor-pointer hover:bg-accent/40 ${focusedLessonNoteId === note.id ? 'bg-accent/30' : ''}`}
+                            >
+                              <td className="w-[60px] text-center py-3 px-4 align-middle">W{note.week}</td>
+                              <td className="py-3 px-4 align-middle">
+                                <div className="truncate">{linkedSyllabus?.title || note.title || 'No linked syllabus topic'}</div>
+                                <div className="text-xs text-muted-foreground line-clamp-1">{note.content}</div>
+                              </td>
+                              <td className="w-[120px] text-center py-3 px-4 align-middle">
+                                {isSyllabusApproved ? (
+                                  <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300 text-sm">
+                                    <Link2 size={14} /> Linked
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">Empty</span>
+                                )}
+                              </td>
+                              <td className="w-[120px] text-center py-3 px-4 align-middle">
+                                <Badge variant={note.noteStatus as any}>{note.noteStatus}</Badge>
+                              </td>
+                              <td className="w-[80px] text-center py-3 px-4 align-middle">{note.questions.length}</td>
+                              <td className="w-[100px] text-right py-3 px-4 align-middle" onClick={(event) => event.stopPropagation()}>
+                                <div className="inline-flex items-center space-x-2">
+                                  {!isNoteApproved && (
+                                    <Button size="sm" variant="primary" disabled={!isSyllabusApproved || note.noteStatus !== 'draft'}>
+                                      Submit
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDeleteLessonNote(note.id)}
+                                    disabled={note.noteStatus === 'approved'}
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {!isSyllabusApproved && (
+                              <tr>
+                                <td colSpan={6} className="px-3 py-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/60 dark:bg-amber-950/40 border-b border-border">
+                                  Warning: Link to an approved syllabus before submitting notes.
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {activeTab === 'assessment' && (
+        <Card
+          title="Assessment"
+          action={
+            <Button size="sm" variant="primary" onClick={openAssessmentCreateModal}>
+              <Plus size={16} className="mr-2" />Add New
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 border border-border rounded-lg bg-accent/20">
               <div>
                 <label className="block mb-2 text-sm text-muted-foreground">Class</label>
                 <select
@@ -1222,163 +2240,19 @@ export function TeacherDashboard() {
                 </select>
               </div>
             </div>
-          </div>
 
-          {!selectedClass || !selectedSubject ? (
-            <div className="p-10 border border-dashed border-border rounded-lg text-center text-muted-foreground">
-              Select a Class and Subject to manage lesson materials.
-            </div>
-          ) : (
-            <Card title="Lesson Notes">
-              {focusedLinkedSyllabus && (
-                <div className="mb-4 p-3 rounded-lg border border-border bg-accent/20">
-                  <Badge variant="approved">
-                    Linked to Syllabus: Week {focusedLinkedSyllabus.week} - {focusedLinkedSyllabus.title}
-                  </Badge>
+            {!selectedClass || !selectedSubject || (assessmentView === 'list' && filteredAssessments.length === 0) ? (
+              <div className="min-h-[260px] flex flex-col items-center justify-center gap-4 border border-dashed border-border rounded-lg text-center text-muted-foreground">
+                <div>
+                  <p className="font-medium text-foreground">No assessments to display</p>
+                  <p className="text-sm">Select a class and subject, or add a new assessment.</p>
                 </div>
-              )}
-
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="w-[60px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Week</th>
-                      <th className="py-3 px-4 align-middle text-left text-xs uppercase text-muted-foreground">Topic / Title</th>
-                      <th className="w-[120px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Syllabus</th>
-                      <th className="w-[120px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Note</th>
-                      <th className="w-[80px] text-center py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Qns</th>
-                      <th className="w-[100px] text-right py-3 px-4 align-middle text-xs uppercase text-muted-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLessonNotes.map((note) => {
-                      const linkedSyllabus = syllabusByWeek.get(note.week);
-                      const isSyllabusApproved = linkedSyllabus?.status === 'approved';
-                      const isNoteApproved = note.noteStatus === 'approved';
-                      const canEditNote = note.createdBy === currentTeacherId || note.noteStatus !== 'approved';
-                      const isRowClickable = true;
-
-                      return (
-                        <Fragment key={note.id}>
-                          <tr
-                            id={`lesson-note-row-${note.id}`}
-                            key={note.id}
-                            onClick={() => {
-                              if (!isRowClickable) return;
-                              navigate(`/teaching-console/lesson-editor/${note.id}?className=${encodeURIComponent(selectedClass)}&subject=${encodeURIComponent(selectedSubject)}`, {
-                                state: { selectedClass, selectedSubject, note },
-                              });
-                            }}
-                            className={`border-b border-border ${isRowClickable ? 'cursor-pointer hover:bg-accent/40' : ''} ${focusedLessonNoteId === note.id ? 'bg-accent/30' : ''}`}
-                          >
-                            <td className="w-[60px] text-center py-3 px-4 align-middle">W{note.week}</td>
-                            <td className="py-3 px-4 align-middle">
-                              <div className="truncate">{linkedSyllabus?.title || note.title || 'No linked syllabus topic'}</div>
-                              <div className="text-xs text-muted-foreground line-clamp-1">{note.content}</div>
-                            </td>
-                            <td className="w-[120px] text-center py-3 px-4 align-middle">
-                                {isSyllabusApproved ? (
-                                  <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300 text-sm">
-                                    <Link2 size={14} /> Linked
-                                  </span>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">Empty</span>
-                                )}
-                            </td>
-                            <td className="w-[120px] text-center py-3 px-4 align-middle">
-                              <Badge variant={note.noteStatus as any}>{note.noteStatus}</Badge>
-                            </td>
-                            <td className="w-[80px] text-center py-3 px-4 align-middle">{note.questions.length}</td>
-                            <td className="w-[100px] text-right py-3 px-4 align-middle" onClick={(event) => event.stopPropagation()}>
-                                <div className="inline-flex items-center space-x-2">
-                                  {!isNoteApproved && (
-                                    <Button size="sm" variant="primary" disabled={!isSyllabusApproved || note.noteStatus !== 'draft'}>
-                                      Submit
-                                    </Button>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleDeleteLessonNote(note.id)}
-                                    disabled={note.noteStatus === 'approved'}
-                                  >
-                                    Delete
-                                  </Button>
-                                </div>
-                            </td>
-                          </tr>
-
-                          {!isSyllabusApproved && (
-                            <tr>
-                              <td colSpan={6} className="px-3 py-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/60 dark:bg-amber-950/40 border-b border-border">
-                                Warning: Link to an approved syllabus before submitting notes.
-                              </td>
-                            </tr>
-                          )}
-
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <Button size="sm" variant="primary" onClick={openAssessmentCreateModal}>
+                  <Plus size={14} className="mr-2" />Add New
+                </Button>
               </div>
-
-              {filteredLessonNotes.length === 0 && (
-                <div className="mt-4 p-6 border border-dashed border-border rounded-lg text-center text-muted-foreground">
-                  No lesson notes found for this Class and Subject.
-                </div>
-              )}
-            </Card>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'assessment' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 border border-border rounded-lg bg-accent/20">
-            <div>
-              <label className="block mb-2 text-sm text-muted-foreground">Class</label>
-              <select
-                value={selectedClass}
-                onChange={(e) => handleClassFilterChange(e.target.value)}
-                className="w-full p-2 border border-border rounded-lg bg-input-background"
-              >
-                <option value="">Select class</option>
-                {classOptions.map((className) => (
-                  <option key={className} value={className}>{className}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block mb-2 text-sm text-muted-foreground">Subject</label>
-              <select
-                value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
-                className="w-full p-2 border border-border rounded-lg bg-input-background"
-                disabled={!selectedClass}
-              >
-                <option value="">Select subject</option>
-                {selectedClassSubjects.map((subject) => (
-                  <option key={subject} value={subject}>{subject}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {!selectedClass || !selectedSubject ? (
-            <div className="p-10 border border-dashed border-border rounded-lg text-center text-muted-foreground">
-              Select a Class and Subject to manage assessments.
-            </div>
-          ) : assessmentView === 'list' ? (
-            <Card title="Assessment Management" action={<Badge variant="default">{filteredAssessments.length} total</Badge>}>
-              {filteredAssessments.length === 0 ? (
-                <div className="p-8 border border-dashed border-border rounded-lg text-center">
-                  <p className="text-muted-foreground mb-4">No assessments yet for this class and subject.</p>
-                  <Button size="sm" variant="primary" onClick={handleCreateFirstAssessment}>
-                    <Plus size={14} className="mr-1" /> Create your first assessment
-                  </Button>
-                </div>
-              ) : (
+            ) : assessmentView === 'list' ? (
+              <Card title="Assessment Management" action={<Badge variant="default">{filteredAssessments.length} total</Badge>}>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1434,9 +2308,8 @@ export function TeacherDashboard() {
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </Card>
-          ) : assessmentView === 'grading' && selectedAssessment ? (
+              </Card>
+            ) : assessmentView === 'grading' && selectedAssessment ? (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
                 <Button size="sm" variant="outline" onClick={handleBackToAssessmentList}>
@@ -1543,6 +2416,309 @@ export function TeacherDashboard() {
               </Card>
             </div>
           ) : null}
+          </div>
+        </Card>
+      )}
+
+      {activeTab === 'grade_configuration' && (
+        <div className="space-y-6">
+          <div ref={gradeConfigurationTopRef} />
+          <Card
+            title="Grade Configuration & Cumulative"
+            action={
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <Badge variant={gradebookBadgeVariant}>
+                  {gradebookStatus.charAt(0).toUpperCase() + gradebookStatus.slice(1)}
+                </Badge>
+                <Badge variant={gradeConfigTotalWeight === 100 ? 'approved' : 'rejected'}>
+                  {gradeConfigTotalWeight}% Total
+                </Badge>
+                <Badge variant={selectedGradeConfigSaved ? 'approved' : 'pending'}>
+                  {selectedGradeConfigSaved ? 'Saved Config' : 'Draft Config'}
+                </Badge>
+                <Button size="sm" variant="primary" onClick={handleSubmitGradeConfigForApproval} disabled={!gradeConfigDraft || gradeConfigTotalWeight !== 100 || !isGradeConfigEditable}>
+                  Submit for Approval
+                </Button>
+                {gradebookStatus === 'rejected' && (
+                  <Button size="sm" variant="outline" onClick={handleRevertGradeConfigToDraft}>
+                    Revert to Draft
+                  </Button>
+                )}
+              </div>
+            }
+          >
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-3 p-4 border border-border rounded-lg bg-accent/20">
+              <div>
+                <label className="block mb-2 text-sm text-muted-foreground">Academic Term</label>
+                <select
+                  value={selectedGradeTermId}
+                  onChange={(e) => handleGradeTermChange(e.target.value)}
+                  className="w-full p-2 border border-border rounded-lg bg-input-background"
+                >
+                  {academicTerms.map((term) => (
+                    <option key={term.id} value={term.id}>{term.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block mb-2 text-sm text-muted-foreground">Subject</label>
+                <select
+                  value={`${selectedGradeClassId}::${selectedGradeSubjectId}`}
+                  onChange={(e) => handleGradeContextChange(e.target.value)}
+                  className="w-full p-2 border border-border rounded-lg bg-input-background"
+                >
+                  {gradeSubjectOptions.map((option) => (
+                    <option key={`${option.classId}:${option.subjectId}`} value={`${option.classId}::${option.subjectId}`}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-sm text-muted-foreground">
+              <span>Context: {selectedGradeOption?.label || 'No context selected'}</span>
+              <span>•</span>
+              <span>Term: {selectedGradeTerm.label}</span>
+            </div>
+          </Card>
+
+          {gradeContextLoading ? (
+            <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6">
+              <Card title="Assessment Context">
+                <div className="space-y-3">
+                  <Skeleton className="h-6 w-48" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              </Card>
+              <Card title="Cumulative Preview">
+                <div className="space-y-3">
+                  <Skeleton className="h-8 w-32" />
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                </div>
+              </Card>
+            </div>
+          ) : !selectedGradeOption ? (
+            <div className="p-10 border border-dashed border-border rounded-lg text-center text-muted-foreground">
+              Select a subject context to configure category weights and cumulative grading.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6">
+              <div className="space-y-6">
+                <Card title={`Graded Assessments (${gradeConfigRows.length})`}>
+                  {gradeConfigRows.length === 0 ? (
+                    <div className="p-8 border border-dashed border-border rounded-lg text-center text-muted-foreground">
+                      No graded assessments exist for this class and subject yet.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border bg-accent/20 text-xs uppercase text-muted-foreground">
+                            <th className="py-3 px-4 text-left">Assessment</th>
+                            <th className="py-3 px-4 text-left">Marks</th>
+                            <th className="py-3 px-4 text-left">Category</th>
+                            <th className="py-3 px-4 text-left">Include in Cumulative</th>
+                            <th className="py-3 px-4 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gradeConfigRows.map((assessment) => (
+                            <tr key={assessment.id} className="border-b border-border">
+                              <td className="py-3 px-4">
+                                <div>
+                                  <p className="font-medium">{assessment.title}</p>
+                                  <p className="text-xs text-muted-foreground">{assessment.type}</p>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">{assessment.totalMarks}</td>
+                              <td className="py-3 px-4">
+                                <select
+                                  value={assessment.category}
+                                  onChange={(e) => updateGradeConfigAssessment(assessment.id, { category: e.target.value as GradeCategory })}
+                                  disabled={isGradebookLocked}
+                                  className="w-full max-w-[180px] p-2 border border-border rounded-lg bg-input-background"
+                                >
+                                  {gradeCategories.map((category) => (
+                                    <option key={category} value={category}>{category}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3">
+                                  <Switch
+                                    checked={assessment.includeInCumulative}
+                                    onCheckedChange={(checked) => updateGradeConfigAssessment(assessment.id, { includeInCumulative: checked })}
+                                    disabled={isGradebookLocked}
+                                  />
+                                  <span className="text-sm text-muted-foreground">
+                                    {assessment.includeInCumulative ? 'Included' : 'Excluded'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <Badge variant={assessment.status === 'graded' ? 'graded' : assessment.status === 'approved' ? 'approved' : 'default'}>{assessment.status}</Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+
+                <Card title="Gradebook Submission Tracking">
+                  {!hasStartedGradebooksForTerm ? (
+                    <div className="p-6 border border-dashed border-border rounded-lg text-sm text-muted-foreground text-center">
+                      No gradebooks submitted yet. Complete your weighting configuration above to begin.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border bg-accent/20 text-xs uppercase text-muted-foreground">
+                            <th className="py-3 px-4 text-left">Subject &amp; Class</th>
+                            <th className="py-3 px-4 text-left">Submission Date</th>
+                            <th className="py-3 px-4 text-left">Status</th>
+                            <th className="py-3 px-4 text-left">Admin Feedback</th>
+                            <th className="py-3 px-4 text-left">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gradebookSubmissionRows.map((row) => (
+                            <tr key={row.configKey} className="border-b border-border">
+                              <td className="py-3 px-4">
+                                <p className="font-medium">{row.subject} - {row.className}</p>
+                              </td>
+                              <td className="py-3 px-4 text-sm text-muted-foreground">
+                                {row.submissionDate ? new Date(row.submissionDate).toLocaleString() : 'Not submitted'}
+                              </td>
+                              <td className="py-3 px-4">
+                                <Badge variant={gradebookStatusToBadgeVariant(row.status)}>
+                                  {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
+                                </Badge>
+                              </td>
+                              <td className="py-3 px-4">
+                                {row.status === 'rejected' && row.adminFeedback ? (
+                                  <button
+                                    type="button"
+                                    title={row.adminFeedback}
+                                    className="inline-flex items-center gap-1 text-destructive"
+                                  >
+                                    <AlertCircle size={14} />
+                                    <span className="text-xs">View feedback</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">No feedback</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {row.status === 'approved' && row.config ? (
+                                  <Button size="sm" variant="outline" onClick={() => handleDownloadGradebookReport(row.config as GradeWeightingConfig)}>
+                                    Download PDF Report
+                                  </Button>
+                                ) : row.status === 'draft' || row.status === 'rejected' ? (
+                                  <Button size="sm" variant="outline" onClick={() => handleViewEditGradebook(row.classId, row.subjectId)}>
+                                    View/Edit
+                                  </Button>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">Awaiting review</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Card>
+              </div>
+
+              <div className="space-y-6">
+                <Card title="Weighting Summary" action={<Badge variant={gradeConfigTotalWeight === 100 ? 'approved' : 'rejected'}>{gradeConfigTotalWeight}%</Badge>}>
+                  {gradeConfigDraft ? (
+                    <div className="space-y-4">
+                      {gradeCategories.map((category) => (
+                        <div key={category} className="flex items-center gap-3">
+                          <div className="w-24 shrink-0 text-sm font-medium">{category}</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={gradeConfigDraft.categoryWeights[category]}
+                            onChange={(e) => updateGradeConfigCategoryWeight(category, e.target.value)}
+                            disabled={isGradebookLocked}
+                            className="w-full p-2 border border-border rounded-lg bg-input-background"
+                          />
+                          <div className="w-12 text-right text-sm text-muted-foreground">%</div>
+                        </div>
+                      ))}
+
+                      <div className={`p-3 rounded-lg border text-sm ${gradeConfigTotalWeight === 100 ? 'border-green-300 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/30 dark:text-green-200' : 'border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200'}`}>
+                        {gradeConfigTotalWeight === 100
+                          ? 'The category weights are balanced and ready to save.'
+                          : `Weights must total 100%. Current total is ${gradeConfigTotalWeight}%.`}
+                      </div>
+
+                      <Button size="sm" variant="primary" className="w-full" onClick={handleSaveGradeConfig} disabled={gradeConfigTotalWeight !== 100 || !isGradeConfigEditable}>
+                        Save Draft Configuration
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="p-4 text-sm text-muted-foreground">Select a class and subject to start configuring category weights.</div>
+                  )}
+                </Card>
+
+                <Card title="Cumulative Preview" action={<Badge variant={gradebookBadgeVariant}>{gradebookStatus}</Badge>}>
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-border p-3 bg-accent/20 text-sm">
+                      <p className="font-medium mb-2">Admin Grade Scale</p>
+                      <div className="flex flex-wrap gap-2">
+                        {globalSchoolSettings.gradeScale.map((band) => (
+                          <Badge key={band.grade} variant="default">
+                            {band.grade} = {band.minimum}+
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    {classGradePreviewRows.length === 0 ? (
+                      <div className="p-4 border border-dashed border-border rounded-lg text-sm text-muted-foreground">
+                        No students available for this class.
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Student</TableHead>
+                            <TableHead>Weighted Average</TableHead>
+                            <TableHead>Letter Grade</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {classGradePreviewRows.map((student) => (
+                            <TableRow key={student.id}>
+                              <TableCell className="font-medium">{student.name}</TableCell>
+                              <TableCell>{student.weightedAverage === null ? 'N/A' : `${student.weightedAverage}%`}</TableCell>
+                              <TableCell>
+                                <Badge variant={student.letterGrade === 'A' || student.letterGrade === 'B' ? 'approved' : student.letterGrade === 'N/A' ? 'default' : 'graded'}>
+                                  {student.letterGrade}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                </Card>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2027,31 +3203,238 @@ export function TeacherDashboard() {
         </Modal>
       )}
 
+      {showCreateLessonNoteModal && (
+        <GenericEntryModal
+          isOpen={true}
+          onClose={closeLessonNoteCreateModal}
+          title="Add Lesson Note"
+          submitLabel="Create Lesson Note"
+          onSubmit={handleCreateLessonNote}
+          submitDisabled={
+            !lessonNoteCreateForm.className ||
+            !lessonNoteCreateForm.subject ||
+            !lessonNoteCreateForm.week ||
+            !lessonNoteCreateForm.title.trim() ||
+            !lessonNoteCreateForm.syllabusId ||
+            approvedSyllabusOptionsForNewLessonNote.length === 0
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block mb-2">Class</label>
+              <select
+                value={lessonNoteCreateForm.className}
+                onChange={(e) => setLessonNoteCreateForm((prev) => ({ ...prev, className: e.target.value, subject: '', syllabusId: '' }))}
+                className="w-full p-2 border border-border rounded-lg bg-input-background"
+              >
+                <option value="">Select class</option>
+                {classOptions.map((className) => (
+                  <option key={className} value={className}>{className}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block mb-2">Subject</label>
+              <select
+                value={lessonNoteCreateForm.subject}
+                onChange={(e) => setLessonNoteCreateForm((prev) => ({ ...prev, subject: e.target.value, syllabusId: '' }))}
+                className="w-full p-2 border border-border rounded-lg bg-input-background"
+                disabled={!lessonNoteCreateForm.className}
+              >
+                <option value="">Select subject</option>
+                {lessonNoteCreateSubjects.map((subject) => (
+                  <option key={subject} value={subject}>{subject}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block mb-2">Week</label>
+              <select
+                value={lessonNoteCreateForm.week}
+                onChange={(e) => setLessonNoteCreateForm((prev) => ({ ...prev, week: e.target.value }))}
+                className="w-full p-2 border border-border rounded-lg bg-input-background"
+              >
+                <option value="">Select week</option>
+                {Array.from({ length: 12 }, (_, idx) => idx + 1).map((weekNumber) => (
+                  <option key={weekNumber} value={weekNumber}>Week {weekNumber}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block mb-2">Title</label>
+              <input
+                type="text"
+                value={lessonNoteCreateForm.title}
+                onChange={(e) => setLessonNoteCreateForm((prev) => ({ ...prev, title: e.target.value }))}
+                className="w-full p-3 border border-border rounded-lg bg-input-background"
+                placeholder="e.g. Linear Equations Lesson"
+              />
+            </div>
+
+            <div>
+              <label className="block mb-2">Link to Approved Syllabus</label>
+              <select
+                value={lessonNoteCreateForm.syllabusId}
+                onChange={(e) => setLessonNoteCreateForm((prev) => ({ ...prev, syllabusId: e.target.value }))}
+                className="w-full p-2 border border-border rounded-lg bg-input-background"
+                disabled={!lessonNoteCreateForm.className || !lessonNoteCreateForm.subject}
+              >
+                <option value="">Select approved syllabus</option>
+                {approvedSyllabusOptionsForNewLessonNote.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    Week {entry.week} - {entry.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {lessonNoteCreateForm.className && lessonNoteCreateForm.subject && approvedSyllabusOptionsForNewLessonNote.length === 0 && (
+              <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                No approved syllabus is available for this class and subject yet.
+              </div>
+            )}
+          </div>
+        </GenericEntryModal>
+      )}
+
+      {showAssessmentModal && (
+        <GenericEntryModal
+          isOpen={true}
+          onClose={closeAssessmentModal}
+          title="Add Assessment"
+          submitLabel="Create Assessment"
+          onSubmit={handleCreateAssessment}
+          submitDisabled={
+            !assessmentForm.className ||
+            !assessmentForm.subject ||
+            !assessmentForm.title.trim() ||
+            !assessmentForm.totalMarks.trim() ||
+            Number(assessmentForm.totalMarks) <= 0 ||
+            !assessmentForm.dueDate
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block mb-2">Class</label>
+              <select
+                value={assessmentForm.className}
+                onChange={(e) => setAssessmentForm((prev) => ({ ...prev, className: e.target.value, subject: '' }))}
+                className="w-full p-2 border border-border rounded-lg bg-input-background"
+              >
+                <option value="">Select class</option>
+                {classOptions.map((className) => (
+                  <option key={className} value={className}>{className}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block mb-2">Subject</label>
+              <select
+                value={assessmentForm.subject}
+                onChange={(e) => setAssessmentForm((prev) => ({ ...prev, subject: e.target.value }))}
+                className="w-full p-2 border border-border rounded-lg bg-input-background"
+                disabled={!assessmentForm.className}
+              >
+                <option value="">Select subject</option>
+                {lessonNoteCreateSubjects.map((subject) => (
+                  <option key={subject} value={subject}>{subject}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block mb-2">Title</label>
+              <input
+                type="text"
+                value={assessmentForm.title}
+                onChange={(e) => setAssessmentForm((prev) => ({ ...prev, title: e.target.value }))}
+                className="w-full p-3 border border-border rounded-lg bg-input-background"
+                placeholder="e.g. Mathematics Quiz 1"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block mb-2">Total Mark</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={assessmentForm.totalMarks}
+                  onChange={(e) => setAssessmentForm((prev) => ({ ...prev, totalMarks: e.target.value }))}
+                  className="w-full p-3 border border-border rounded-lg bg-input-background"
+                  placeholder="20"
+                />
+              </div>
+              <div>
+                <label className="block mb-2">Date</label>
+                <input
+                  type="date"
+                  value={assessmentForm.dueDate}
+                  onChange={(e) => setAssessmentForm((prev) => ({ ...prev, dueDate: e.target.value }))}
+                  className="w-full p-3 border border-border rounded-lg bg-input-background"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block mb-2">Assessment Type</label>
+                <select
+                  value={assessmentForm.type}
+                  onChange={(e) => setAssessmentForm((prev) => ({ ...prev, type: e.target.value as AssessmentType }))}
+                  className="w-full p-2 border border-border rounded-lg bg-input-background"
+                >
+                  <option value="Quiz">Quiz</option>
+                  <option value="Test">Test</option>
+                  <option value="Assignment">Assignment</option>
+                  <option value="Exam">Exam</option>
+                </select>
+              </div>
+              <div>
+                <label className="block mb-2">Status</label>
+                <select
+                  value={assessmentForm.status}
+                  onChange={(e) => setAssessmentForm((prev) => ({ ...prev, status: e.target.value as AssessmentStatus }))}
+                  className="w-full p-2 border border-border rounded-lg bg-input-background"
+                >
+                  <option value="draft">Draft</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="approved">Approved</option>
+                </select>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="flex items-center gap-2 text-sm mb-2">
+                  <input
+                    type="checkbox"
+                    checked={assessmentForm.isCumulative}
+                    onChange={(e) => setAssessmentForm((prev) => ({ ...prev, isCumulative: e.target.checked }))}
+                  />
+                  Cumulative
+                </label>
+              </div>
+            </div>
+          </div>
+        </GenericEntryModal>
+      )}
+
       {showNewSyllabusModal && (
-        <Modal
+        <GenericEntryModal
           isOpen={true}
           onClose={closeSyllabusModal}
           title={currentSyllabusEntry ? 'Edit Syllabus Entry' : 'Create New Syllabus'}
-          footer={
-            <>
-              <Button variant="outline" onClick={closeSyllabusModal}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleSaveSyllabusEntry}
-                disabled={
-                  !syllabusForm.className ||
-                  !syllabusForm.subject ||
-                  !syllabusForm.week ||
-                  !syllabusForm.title.trim() ||
-                    !syllabusForm.content.trim() ||
-                  Number(syllabusForm.lessonNotes) < 0
-                }
-              >
-                {currentSyllabusEntry ? 'Save Changes' : 'Create Syllabus'}
-              </Button>
-            </>
+          submitLabel={currentSyllabusEntry ? 'Save Changes' : 'Create Syllabus'}
+          onSubmit={handleSaveSyllabusEntry}
+          submitDisabled={
+            !syllabusForm.className ||
+            !syllabusForm.subject ||
+            !syllabusForm.week ||
+            !syllabusForm.title.trim() ||
+            !syllabusForm.content.trim() ||
+            Number(syllabusForm.lessonNotes) < 0
           }
         >
           <div className="space-y-4">
@@ -2136,7 +3519,7 @@ export function TeacherDashboard() {
               />
             </div>
           </div>
-        </Modal>
+        </GenericEntryModal>
       )}
 
       {showLessonNoteModal && currentLessonNoteEntry && (
