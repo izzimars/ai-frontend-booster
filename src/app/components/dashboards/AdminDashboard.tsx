@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../Modal';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '../ui/sheet';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Skeleton } from '../ui/skeleton';
 import { useNavigate } from 'react-router-dom';
@@ -205,6 +206,30 @@ type GradebookApprovalRow = {
   submissionDate: string | null;
   status: GradebookStatus;
   config: GradeWeightingConfig | null;
+};
+
+type StudentGradebookResult = {
+  studentId: string;
+  studentName: string;
+  weightedAverage: number;
+  letterGrade: string;
+  isOutlier: boolean;
+  outlierReason?: string;
+  categoryScores: Record<GradeCategory, number>; // average score per category
+};
+
+type GradeDistributionPoint = {
+  grade: string;
+  count: number;
+  percentage: number;
+};
+
+type ResultPreviewData = {
+  config: GradeWeightingConfig;
+  students: StudentGradebookResult[];
+  gradeDistribution: GradeDistributionPoint[];
+  classAverage: number;
+  policyAligned: boolean;
 };
 
 // ========== MOCK DATA (replace with API) ==========
@@ -1167,6 +1192,8 @@ export function AdminDashboard() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showRejectReasonModal, setShowRejectReasonModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [showResultPreviewSheet, setShowResultPreviewSheet] = useState(false);
+  const [resultPreviewData, setResultPreviewData] = useState<ResultPreviewData | null>(null);
   
   // Class-subject mapping state
   const [showMappingModal, setShowMappingModal] = useState(false);
@@ -2579,6 +2606,112 @@ export function AdminDashboard() {
     return Math.abs(total - 100) < 0.1;
   };
 
+  // Result Preview Helper Functions
+  const calculateLetterGrade = (score: number): string => {
+    if (score >= 70) return 'A';
+    if (score >= 60) return 'B';
+    if (score >= 50) return 'C';
+    if (score >= 40) return 'D';
+    return 'F';
+  };
+
+  const checkPolicyAlignment = (config: GradeWeightingConfig): boolean => {
+    // School's default recommended weights (30% Homework, 20% Exercise, 10% Lab, 20% Test, 20% Exam)
+    const defaultWeights: Record<GradeCategory, number> = {
+      'Homework': 30,
+      'Exercise': 20,
+      'Lab': 10,
+      'Test': 20,
+      'Exam': 20,
+    };
+
+    // Check if all weights match school defaults within 5% tolerance
+    return Object.entries(defaultWeights).every(
+      ([category, defaultWeight]) =>
+        Math.abs((config.categoryWeights[category as GradeCategory] || 0) - defaultWeight) <= 5,
+    );
+  };
+
+  const generateMockStudentResults = (config: GradeWeightingConfig): StudentGradebookResult[] => {
+    // Mock student list by class name
+    const mockStudents: Record<string, string[]> = {
+      'JSS1A': ['Chidi Okonkwo', 'Amara Nwosu', 'Somto Ikechukwu', 'Tunde Adeyemi', 'Grace Obi', 'Emeka Uche'],
+      'JSS2B': ['Kunle Fashola', 'Zainab Hassan', 'Chioma Ejiofor', 'Ibrahim Yusuf'],
+      'SS1A': ['Fatima Mohammed', 'Segun Campbell', 'Aisha Bello', 'Tolu Ajayi'],
+      'SS2B': ['Kemi Johnson', 'Dayo Oladele', 'Busola Adeoye'],
+    };
+
+    const students = mockStudents[config.className] || [];
+    const classAverage = 65; // Mock class average
+
+    return students.map((name, idx) => {
+      // Generate varied scores for each category
+      const categoryScores: Record<GradeCategory, number> = {
+        'Homework': Math.min(100, Math.max(0, classAverage + (Math.random() - 0.5) * 30)),
+        'Exercise': Math.min(100, Math.max(0, classAverage + (Math.random() - 0.5) * 25)),
+        'Lab': Math.min(100, Math.max(0, classAverage + (Math.random() - 0.5) * 20)),
+        'Test': Math.min(100, Math.max(0, classAverage + (Math.random() - 0.5) * 35)),
+        'Exam': Math.min(100, Math.max(0, classAverage + (Math.random() - 0.5) * 40)),
+      };
+
+      // Calculate weighted average
+      const weightedAverage = Object.entries(config.categoryWeights).reduce(
+        (sum, [category, weight]) => sum + (categoryScores[category as GradeCategory] * weight) / 100,
+        0,
+      );
+
+      const letterGrade = calculateLetterGrade(Math.round(weightedAverage));
+      const isLowScore = weightedAverage < 40;
+      const isHighScore = weightedAverage > 90;
+
+      return {
+        studentId: `st-${config.classId}-${idx}`,
+        studentName: name,
+        weightedAverage: Math.round(weightedAverage * 10) / 10,
+        letterGrade,
+        isOutlier: isLowScore || isHighScore,
+        outlierReason: isLowScore ? 'Low score' : isHighScore ? 'Exceptionally high' : undefined,
+        categoryScores,
+      };
+    });
+  };
+
+  const generateGradeDistribution = (results: StudentGradebookResult[]): GradeDistributionPoint[] => {
+    const gradeLetters = ['A', 'B', 'C', 'D', 'F'];
+    const distribution = gradeLetters.map((grade) => {
+      const count = results.filter((r) => r.letterGrade === grade).length;
+      return {
+        grade,
+        count,
+        percentage: results.length > 0 ? Math.round((count / results.length) * 100) : 0,
+      };
+    });
+    return distribution;
+  };
+
+  const generateResultPreview = (config: GradeWeightingConfig): ResultPreviewData => {
+    const students = generateMockStudentResults(config);
+    const gradeDistribution = generateGradeDistribution(students);
+    const classAverage = Math.round(
+      (students.reduce((sum, s) => sum + s.weightedAverage, 0) / Math.max(1, students.length)) * 10,
+    ) / 10;
+    const policyAligned = checkPolicyAlignment(config);
+
+    return {
+      config,
+      students,
+      gradeDistribution,
+      classAverage,
+      policyAligned,
+    };
+  };
+
+  const openResultPreview = (config: GradeWeightingConfig) => {
+    const preview = generateResultPreview(config);
+    setResultPreviewData(preview);
+    setShowResultPreviewSheet(true);
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Navigation Tabs */}
@@ -3259,6 +3392,15 @@ export function AdminDashboard() {
               <Button variant="outline" onClick={() => setShowReviewModal(false)}>
                 Close
               </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  if (selectedReviewConfig) openResultPreview(selectedReviewConfig);
+                }}
+              >
+                <Eye size={14} className="mr-1" />
+                Full Preview
+              </Button>
               <Button variant="destructive" onClick={() => setShowRejectReasonModal(true)}>
                 <XCircle size={14} className="mr-1" />
                 Reject
@@ -3410,6 +3552,206 @@ export function AdminDashboard() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Result Preview Sheet */}
+      {showResultPreviewSheet && resultPreviewData && (
+        <Sheet open={showResultPreviewSheet} onOpenChange={setShowResultPreviewSheet}>
+          <SheetContent side="right" className="w-full sm:w-[90vw] lg:w-[85vw] max-w-6xl overflow-y-auto">
+            <SheetHeader className="mb-6">
+              <SheetTitle className="text-xl">
+                Result Preview: {resultPreviewData.config.subject} - {resultPreviewData.config.className}
+              </SheetTitle>
+            </SheetHeader>
+
+            <div className="space-y-6 pb-24">
+              {/* Teacher's Weighting Logic */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold">Teacher's Weighting Logic</h3>
+                  <Badge variant={resultPreviewData.policyAligned ? 'approved' : 'default'}>
+                    {resultPreviewData.policyAligned ? 'Policy Aligned' : 'Custom'}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                  {Object.entries(resultPreviewData.config.categoryWeights).map(([category, weight]) => (
+                    <div key={category} className="p-3 border border-border rounded text-center">
+                      <p className="text-xs text-muted-foreground mb-2">{category}</p>
+                      <p className="text-xl font-bold text-primary">{weight}%</p>
+                      <div className="mt-2 h-2 rounded bg-muted overflow-hidden">
+                        <div className="h-full bg-blue-500" style={{ width: `${weight}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {!isWeightingCompliant(resultPreviewData.config) && (
+                  <div className="mt-3 p-3 rounded border border-red-200 bg-red-50 dark:bg-red-950/30">
+                    <p className="text-xs text-red-700 dark:text-red-200">
+                      ⚠️ Weights do not total 100% - Compliance check failed
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Class Average & Distribution Overview */}
+              <div>
+                <h3 className="font-semibold mb-3">Class Overview</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-4 border border-border rounded">
+                    <p className="text-sm text-muted-foreground">Class Average</p>
+                    <p className="text-3xl font-bold mt-2">{resultPreviewData.classAverage}%</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {calculateLetterGrade(resultPreviewData.classAverage)} Grade
+                    </p>
+                  </div>
+                  <div className="p-4 border border-border rounded">
+                    <p className="text-sm text-muted-foreground">Total Students</p>
+                    <p className="text-3xl font-bold mt-2">{resultPreviewData.students.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Outliers: {resultPreviewData.students.filter((s) => s.isOutlier).length}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Grade Distribution Chart */}
+              <div>
+                <h3 className="font-semibold mb-3">Grade Distribution (Histogram)</h3>
+                <div className="p-4 border border-border rounded bg-accent/30">
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={resultPreviewData.gradeDistribution}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="grade" />
+                      <YAxis label={{ value: 'Students', angle: -90, position: 'insideLeft' }} />
+                      <Tooltip 
+                        formatter={(value, name) => {
+                          if (name === 'count') return [`${value} students`, 'Count'];
+                          return [`${value}%`, 'Percentage'];
+                        }}
+                        contentStyle={{ backgroundColor: 'rgba(0,0,0,0.8)', border: 'none' }}
+                      />
+                      <Bar dataKey="count" fill="#3b82f6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="mt-3 grid grid-cols-5 gap-2 text-center text-xs">
+                    {resultPreviewData.gradeDistribution.map((item) => (
+                      <div key={item.grade}>
+                        <p className="font-bold">{item.grade}</p>
+                        <p className="text-muted-foreground">{item.count}pt ({item.percentage}%)</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Student Results Table */}
+              <div>
+                <h3 className="font-semibold mb-3">Student Results</h3>
+                <div className="border border-border rounded overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="p-3 text-left">Student Name</th>
+                        <th className="p-3 text-right">Weighted Average</th>
+                        <th className="p-3 text-center">Letter Grade</th>
+                        <th className="p-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resultPreviewData.students.map((student, idx) => (
+                        <tr
+                          key={student.studentId}
+                          className={`border-t border-border hover:bg-muted/50 ${
+                            student.isOutlier ? 'bg-amber-50 dark:bg-amber-950/20' : ''
+                          }`}
+                        >
+                          <td className="p-3">
+                            <div>
+                              <p className="font-medium">{student.studentName}</p>
+                              {student.isOutlier && (
+                                <p className="text-xs text-amber-700 dark:text-amber-200">
+                                  ⚠ {student.outlierReason}
+                                </p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 text-right">
+                            <span className={`font-bold ${
+                              student.weightedAverage >= 70 ? 'text-green-600' :
+                              student.weightedAverage >= 50 ? 'text-amber-600' :
+                              'text-red-600'
+                            }`}>
+                              {student.weightedAverage}
+                            </span>
+                            <span className="text-xs text-muted-foreground ml-1">/ 100</span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <Badge 
+                              variant={
+                                student.letterGrade === 'A' || student.letterGrade === 'B' ? 'approved' :
+                                student.letterGrade === 'C' ? 'submitted' :
+                                student.letterGrade === 'D' ? 'pending' : 'rejected'
+                              }
+                            >
+                              {student.letterGrade}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-center">
+                            {student.isOutlier ? (
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-200 text-xs font-bold">
+                                !
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">OK</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground mt-3">
+                  💡 Outliers (highlighted in amber) have exceptionally low scores (&lt;40%) or exceptionally high scores (&gt;90%). 
+                  Review these records for potential data entry errors.
+                </p>
+              </div>
+
+              {/* Admin Decision Footer */}
+            </div>
+
+            <SheetFooter className="fixed bottom-0 right-0 left-0 bg-background border-t border-border p-4 gap-2 flex items-center justify-between sm:w-[90vw] lg:w-[85vw] max-w-6xl">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowResultPreviewSheet(false)}
+              >
+                Close Preview
+              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="destructive" 
+                  onClick={() => {
+                    setShowResultPreviewSheet(false);
+                    setShowRejectReasonModal(true);
+                  }}
+                >
+                  <XCircle size={14} className="mr-1" />
+                  Reject
+                </Button>
+                <Button 
+                  onClick={() => {
+                    if (resultPreviewData?.config) {
+                      handleApproveGradebook(resultPreviewData.config);
+                      setShowResultPreviewSheet(false);
+                    }
+                  }}
+                >
+                  <CheckCircle size={14} className="mr-1" />
+                  Approve
+                </Button>
+              </div>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* ========== SCHOOL SETUP ========== */}
