@@ -36,6 +36,19 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../Modal';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  type FeeItemCatalog,
+  type FeeItemStatus,
+  approveFeeItem,
+  canEditFeeItem,
+  feeCatalogSeed,
+  loadFeeCatalog,
+  rejectFeeItem,
+  saveFeeCatalog,
+  submitForApproval,
+  subscribeFeeCatalogUpdates,
+  withdrawApproval,
+} from '../../state/feeCatalogStore';
 
 type ReceiptStatus = 'pending' | 'approved' | 'rejected' | 'flagged' | 'duplicate';
 
@@ -88,19 +101,6 @@ type StudentLedgerRecord = {
   className: string;
   feeItems: FeeBalanceItem[];
   lastPaymentDate: string | null;
-};
-
-type FeeItemCatalog = {
-  id: number;
-  name: string;
-  category: string;
-  amount: number;
-  termId: number;
-  term: string;
-  classId: number | null;
-  isCompulsory: boolean;
-  isActive: boolean;
-  dueDate: string;
 };
 
 type AdjustmentType = 'Discount' | 'Waiver' | 'Fine' | 'Error Correction';
@@ -292,13 +292,6 @@ const classDirectory = [
 const termDirectory = [
   { id: 1, name: 'Term 2, 2026' },
   { id: 2, name: 'Term 3, 2026' },
-];
-
-const feeCatalogSeed: FeeItemCatalog[] = [
-  { id: 1, name: 'Tuition Fee', category: 'Academic', amount: 35000, termId: 2, term: 'Term 3, 2026', classId: null, isCompulsory: true, isActive: true, dueDate: '2026-03-15' },
-  { id: 2, name: 'Lab Fee', category: 'Facility', amount: 10000, termId: 2, term: 'Term 3, 2026', classId: 1, isCompulsory: true, isActive: true, dueDate: '2026-03-15' },
-  { id: 3, name: 'Sports Fee', category: 'Activity', amount: 5000, termId: 2, term: 'Term 3, 2026', classId: null, isCompulsory: false, isActive: true, dueDate: '2026-03-15' },
-  { id: 4, name: 'Books Fee', category: 'Academic', amount: 8000, termId: 1, term: 'Term 2, 2026', classId: null, isCompulsory: true, isActive: true, dueDate: '2026-01-20' },
 ];
 
 const receiptSeed: ReceiptRecord[] = [
@@ -584,6 +577,13 @@ const statusBadge = (status: ReceiptStatus) => {
   return { variant: 'pending' as const, text: 'Pending', className: '' };
 };
 
+const feeItemStatusBadge = (status: FeeItemStatus) => {
+  if (status === 'approved') return { variant: 'approved' as const, text: 'Approved' };
+  if (status === 'pending_approval') return { variant: 'pending' as const, text: 'Pending Approval' };
+  if (status === 'rejected') return { variant: 'rejected' as const, text: 'Rejected' };
+  return { variant: 'default' as const, text: 'Draft' };
+};
+
 const ledgerStatusBadge = (status: LedgerStatus) => {
   if (status === 'paid_full') return { variant: 'approved' as const, text: 'Paid in Full', className: '' };
   if (status === 'partial') return { variant: 'pending' as const, text: 'Partially Paid', className: '' };
@@ -601,7 +601,8 @@ export function BursarDashboard() {
   const [activeTab, setActiveTab] = useState<'queue' | 'ledger' | 'collections' | 'bank' | 'feeitems' | 'reports' | 'audit'>('queue');
   const [receipts, setReceipts] = useState<ReceiptRecord[]>(() => parseStoredJson(RECEIPTS_STORAGE_KEY, receiptSeed));
   const [ledgerRecords, setLedgerRecords] = useState<StudentLedgerRecord[]>(() => parseStoredJson(LEDGER_STORAGE_KEY, ledgerSeed));
-  const [feeCatalog, setFeeCatalog] = useState<FeeItemCatalog[]>(feeCatalogSeed);
+  const [feeCatalog, setFeeCatalog] = useState<FeeItemCatalog[]>(() => loadFeeCatalog());
+  const [feeItemStatusFilter, setFeeItemStatusFilter] = useState<'all' | FeeItemStatus>('all');
   const [adjustments, setAdjustments] = useState<AdjustmentEntry[]>(() => parseStoredJson(ADJUSTMENTS_STORAGE_KEY, adjustmentsSeed));
   const [financialLogs, setFinancialLogs] = useState<FinancialAuditEntry[]>(() => parseStoredJson(FINANCIAL_LOGS_STORAGE_KEY, financialAuditSeed));
   const [auditFilters, setAuditFilters] = useState({
@@ -698,6 +699,14 @@ export function BursarDashboard() {
     userRole: 'Bursar' as FinancialAuditActorRole,
   };
 
+  const updateFeeCatalog = (updater: (items: FeeItemCatalog[]) => FeeItemCatalog[]) => {
+    setFeeCatalog((prev) => {
+      const next = updater(prev);
+      saveFeeCatalog(next);
+      return next;
+    });
+  };
+
   const createAuditEntry = ({
     actionType,
     description,
@@ -751,10 +760,28 @@ export function BursarDashboard() {
     window.localStorage.setItem(FINANCIAL_LOGS_STORAGE_KEY, JSON.stringify(financialLogs));
   }, [financialLogs]);
 
+  useEffect(() => {
+    const unsubscribe = subscribeFeeCatalogUpdates(() => {
+      setFeeCatalog(loadFeeCatalog());
+    });
+
+    return unsubscribe;
+  }, []);
+
   const classOptions = Array.from(new Set(ledgerRecords.map((entry) => entry.className)));
   const termOptions = Array.from(new Set(feeCatalog.map((entry) => entry.term)));
 
   const reviewReceipt = useMemo(() => receipts.find((entry) => entry.id === reviewReceiptId) || null, [receipts, reviewReceiptId]);
+
+  const filteredFeeCatalog = useMemo(
+    () =>
+      feeCatalog.filter(
+        (item) =>
+          item.isActive &&
+          (feeItemStatusFilter === 'all' || item.status === feeItemStatusFilter),
+      ),
+    [feeCatalog, feeItemStatusFilter],
+  );
 
   const reviewLedger = useMemo(() => {
     if (!reviewReceipt) return null;
@@ -1489,6 +1516,10 @@ export function BursarDashboard() {
 
   const openFeeItemEditor = (feeItem?: FeeItemCatalog) => {
     if (feeItem) {
+      if (!canEditFeeItem(feeItem.status)) {
+        alert('Only draft or rejected fee items can be edited.');
+        return;
+      }
       setEditingFeeItem(feeItem);
       setFeeItemDraft({
         name: feeItem.name,
@@ -1518,7 +1549,7 @@ export function BursarDashboard() {
 
   const toggleFeeItemActive = (feeItemId: number) => {
     const existing = feeCatalog.find((entry) => entry.id === feeItemId);
-    setFeeCatalog((prev) => prev.map((entry) => (entry.id === feeItemId ? { ...entry, isActive: !entry.isActive } : entry)));
+    updateFeeCatalog((prev) => prev.map((entry) => (entry.id === feeItemId ? { ...entry, isActive: !entry.isActive } : entry)));
 
     if (existing) {
       createAuditEntry({
@@ -1536,7 +1567,7 @@ export function BursarDashboard() {
 
   const softDeleteFeeItem = (feeItemId: number) => {
     const existing = feeCatalog.find((entry) => entry.id === feeItemId);
-    setFeeCatalog((prev) => prev.map((entry) => (entry.id === feeItemId ? { ...entry, isActive: false } : entry)));
+    updateFeeCatalog((prev) => prev.map((entry) => (entry.id === feeItemId ? { ...entry, isActive: false } : entry)));
 
     if (existing) {
       createAuditEntry({
@@ -1553,9 +1584,14 @@ export function BursarDashboard() {
   };
 
   const duplicateFeeItem = (feeItem: FeeItemCatalog) => {
+    if (!canEditFeeItem(feeItem.status)) {
+      alert('Only draft or rejected fee items can be duplicated.');
+      return;
+    }
+
     const nextId = feeCatalog.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
     const nextTerm = termDirectory.find((term) => term.id !== feeItem.termId) || termDirectory[0];
-    setFeeCatalog((prev) => [
+    updateFeeCatalog((prev) => [
       ...prev,
       {
         ...feeItem,
@@ -1564,8 +1600,41 @@ export function BursarDashboard() {
         termId: nextTerm.id,
         term: nextTerm.name,
         isActive: false,
+        status: 'draft',
+        submittedAt: null,
+        approvedAt: null,
+        rejectionReason: null,
       },
     ]);
+  };
+
+  const submitFeeItemForApproval = (feeItemId: number) => {
+    const existing = feeCatalog.find((entry) => entry.id === feeItemId);
+    if (!existing || !canEditFeeItem(existing.status)) {
+      alert('Only draft or rejected fee items can be submitted for approval.');
+      return;
+    }
+
+    const next = submitForApproval(feeItemId);
+    setFeeCatalog(next);
+  };
+
+  const withdrawFeeItemApproval = (feeItemId: number) => {
+    const existing = feeCatalog.find((entry) => entry.id === feeItemId);
+    if (!existing || existing.status !== 'pending_approval') return;
+
+    const next = withdrawApproval(feeItemId);
+    setFeeCatalog(next);
+  };
+
+  const viewFeeItemDetails = (feeItem: FeeItemCatalog) => {
+    const rejection = feeItem.rejectionReason ? `\nRejection Reason: ${feeItem.rejectionReason}` : '';
+    const submitted = feeItem.submittedAt ? `\nSubmitted: ${new Date(feeItem.submittedAt).toLocaleString()}` : '';
+    alert(
+      `Name: ${feeItem.name}\nCategory: ${feeItem.category}\nAmount: ${formatCurrency(feeItem.amount)}\nScope: ${feeItem.term} • ${classScopeLabel(
+        feeItem.classId,
+      )}\nDue Date: ${feeItem.dueDate}\nStatus: ${feeItem.status}${submitted}${rejection}`,
+    );
   };
 
   const saveFeeItem = () => {
@@ -1583,11 +1652,16 @@ export function BursarDashboard() {
     if (!selectedTerm) return;
 
     if (editingFeeItem) {
+      if (!canEditFeeItem(editingFeeItem.status)) {
+        alert('Only draft or rejected fee items can be edited.');
+        return;
+      }
+
       const shouldUpdateUnpaidAssignments = amount !== editingFeeItem.amount
         ? window.confirm('Price changed. Update all existing unpaid assignments too? Click Cancel to apply only to new assignments.')
         : false;
 
-      setFeeCatalog((prev) =>
+      updateFeeCatalog((prev) =>
         prev.map((entry) =>
           entry.id === editingFeeItem.id
             ? {
@@ -1601,6 +1675,10 @@ export function BursarDashboard() {
                 dueDate: feeItemDraft.dueDate,
                 isCompulsory: feeItemDraft.isCompulsory,
                 isActive: feeItemDraft.isActive,
+                status: entry.status,
+                submittedAt: entry.submittedAt,
+                approvedAt: entry.approvedAt,
+                rejectionReason: entry.rejectionReason,
               }
             : entry,
         ),
@@ -1649,7 +1727,7 @@ export function BursarDashboard() {
       });
     } else {
       const nextId = feeCatalog.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
-      setFeeCatalog((prev) => [
+      updateFeeCatalog((prev) => [
         ...prev,
         {
           id: nextId,
@@ -1662,6 +1740,10 @@ export function BursarDashboard() {
           dueDate: feeItemDraft.dueDate,
           isCompulsory: feeItemDraft.isCompulsory,
           isActive: feeItemDraft.isActive,
+          status: 'draft',
+          submittedAt: null,
+          approvedAt: null,
+          rejectionReason: null,
         },
       ]);
 
@@ -1695,7 +1777,9 @@ export function BursarDashboard() {
     const targetClass = classDirectory.find((entry) => entry.id === bulkAssignClassId);
     if (!targetClass) return;
 
-    const selectedItems = feeCatalog.filter((item) => bulkAssignFeeItemIds.includes(item.id));
+    const selectedItems = feeCatalog.filter(
+      (item) => bulkAssignFeeItemIds.includes(item.id) && item.isActive && item.status === 'approved',
+    );
     if (!selectedItems.length) return;
 
     if (!window.confirm(`Assign ${selectedItems.length} fee item(s) to all students in ${targetClass.name}?`)) return;
@@ -2359,6 +2443,20 @@ export function BursarDashboard() {
               </div>
             ) : (
               <div className="overflow-x-auto">
+                    <div className="mb-3 flex items-center gap-2">
+                      <label className="text-sm font-medium">Status</label>
+                      <select
+                        className="border rounded p-1 text-sm"
+                        value={feeItemStatusFilter}
+                        onChange={(e) => setFeeItemStatusFilter(e.target.value as 'all' | FeeItemStatus)}
+                      >
+                        <option value="all">All</option>
+                        <option value="draft">Draft</option>
+                        <option value="pending_approval">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    </div>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left">
@@ -2952,7 +3050,7 @@ export function BursarDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {feeCatalog.map((feeItem) => (
+                {filteredFeeCatalog.map((feeItem) => (
                   <tr key={feeItem.id} className="border-b border-border">
                     <td className="py-2">
                       <p className="font-medium">{feeItem.name}</p>
@@ -2965,25 +3063,46 @@ export function BursarDashboard() {
                       <Badge variant={feeItem.isCompulsory ? 'approved' : 'default'}>{feeItem.isCompulsory ? 'Yes' : 'No'}</Badge>
                     </td>
                     <td className="py-2">
-                      <button
-                        type="button"
-                        className={`px-2 py-1 rounded text-xs border ${feeItem.isActive ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-200' : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-200'}`}
-                        onClick={() => toggleFeeItemActive(feeItem.id)}
-                      >
-                        {feeItem.isActive ? 'Active' : 'Inactive'}
-                      </button>
+                      <Badge variant={feeItemStatusBadge(feeItem.status).variant}>{feeItemStatusBadge(feeItem.status).text}</Badge>
                     </td>
                     <td className="py-2">
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openFeeItemEditor(feeItem)}>
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => duplicateFeeItem(feeItem)}>
-                          <Copy size={14} className="mr-1" />Duplicate
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => softDeleteFeeItem(feeItem.id)}>
-                          <Trash2 size={14} className="mr-1" />Soft Delete
-                        </Button>
+                        {(feeItem.status === 'draft' || feeItem.status === 'rejected') && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => openFeeItemEditor(feeItem)}>
+                              Edit
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => duplicateFeeItem(feeItem)}>
+                              <Copy size={14} className="mr-1" />Duplicate
+                            </Button>
+                            <Button size="sm" onClick={() => submitFeeItemForApproval(feeItem.id)}>
+                              Submit for Approval
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => softDeleteFeeItem(feeItem.id)}>
+                              <Trash2 size={14} className="mr-1" />Soft Delete
+                            </Button>
+                          </>
+                        )}
+                        {feeItem.status === 'pending_approval' && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => withdrawFeeItemApproval(feeItem.id)}>
+                              Withdraw
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => softDeleteFeeItem(feeItem.id)}>
+                              <Trash2 size={14} className="mr-1" />Soft Delete
+                            </Button>
+                          </>
+                        )}
+                        {feeItem.status === 'approved' && (
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => viewFeeItemDetails(feeItem)}>
+                              View
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => softDeleteFeeItem(feeItem.id)}>
+                              <Trash2 size={14} className="mr-1" />Soft Delete
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -3688,7 +3807,7 @@ export function BursarDashboard() {
             <div>
               <label className="text-sm block mb-2">Fee Items</label>
               <div className="space-y-2 max-h-56 overflow-y-auto border border-border rounded p-2">
-                {feeCatalog.filter((entry) => entry.isActive).map((entry) => (
+                {feeCatalog.filter((entry) => entry.isActive && entry.status === 'approved').map((entry) => (
                   <label key={entry.id} className="flex items-center justify-between gap-2 text-sm p-2 rounded hover:bg-muted/40">
                     <span>
                       {entry.name} • {entry.term} • {formatCurrency(entry.amount)}

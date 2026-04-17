@@ -13,6 +13,14 @@ import {
 } from 'lucide-react';
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { Modal } from '../Modal';
+import { ClassSubjectAnalytics } from '../ClassSubjectAnalytics';
+import {
+  approveFeeItem,
+  type FeeItemCatalog,
+  loadFeeCatalog,
+  rejectFeeItem,
+  subscribeFeeCatalogUpdates,
+} from '../../state/feeCatalogStore';
 
 // ========== TYPES ==========
 type FeePolicy = 'full_access' | 'partial_access' | 'block';
@@ -87,6 +95,25 @@ interface ParentEngagementData {
     avgLoginsPerWeek: number;
   }[];
 }
+
+type PrincipalSubjectKpi = {
+  subjectAverage: number;
+  highestScore: number;
+  lowestScore: number;
+  teacherComplianceRate: number | null;
+};
+
+type PrincipalSubjectPerformance = {
+  subject: string;
+  average: number;
+  passRate: number;
+};
+
+type PrincipalAtRiskStudent = {
+  id: string;
+  name: string;
+  cumulativeAverage: number;
+};
 
 // ========== MOCK DATA (extended) ==========
 const pendingSyllabus: SyllabusItem[] = [
@@ -166,6 +193,109 @@ const parentEngagementData: ParentEngagementData = {
   ],
 };
 
+const mockDelay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const gradeBuckets = ['A', 'B', 'C', 'D', 'F'] as const;
+
+const getClassSeed = (className: string) =>
+  className.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+const buildMockSubjectListForClass = async (className: string) => {
+  await mockDelay(160);
+  const seed = getClassSeed(className);
+  const allSubjects = subjectAverages.map((subject) => subject.subject);
+  const shift = seed % allSubjects.length;
+  return allSubjects.slice(shift).concat(allSubjects.slice(0, shift));
+};
+
+const buildMockSubjectPerformanceForClass = async (className: string) => {
+  await mockDelay(200);
+  const seed = getClassSeed(className);
+  return subjectAverages.map((item, index) => {
+    const offset = ((seed + index * 3) % 7) - 3;
+    const average = Math.max(40, Math.min(98, item.average + offset));
+    const passRate = Math.max(50, Math.min(99, item.passRate + offset));
+    return {
+      subject: item.subject,
+      average,
+      passRate,
+    };
+  });
+};
+
+const buildMockGradeDistribution = async (className: string) => {
+  await mockDelay(150);
+  const seed = getClassSeed(className);
+  return gradeBuckets.map((grade, index) => ({
+    grade,
+    count: Math.max(2, ((seed + (index + 2) * 11) % 15) + (index === 2 ? 6 : 0)),
+  }));
+};
+
+const buildMockAtRiskStudents = async (className: string, subjectId: string | null = null) => {
+  await mockDelay(170);
+  const classSeed = getClassSeed(className);
+  const subjectSeed = subjectId
+    ? subjectId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
+    : 0;
+
+  const base = [
+    { id: `${className}-sarah`, name: 'Sarah Johnson', baseline: 38 },
+    { id: `${className}-michael`, name: 'Michael Brown', baseline: 35 },
+    { id: `${className}-amad`, name: 'Amad Bello', baseline: 41 },
+    { id: `${className}-chisom`, name: 'Chisom Okoye', baseline: 37 },
+  ];
+
+  return base
+    .map((student, index) => {
+      const adjustment = ((classSeed + subjectSeed + index * 5) % 7) - 3;
+      const cumulativeAverage = Math.max(0, Math.min(100, student.baseline + adjustment));
+      return {
+        id: student.id,
+        name: student.name,
+        cumulativeAverage,
+      };
+    })
+    .filter((student) => student.cumulativeAverage < 40);
+};
+
+const buildMockSubjectKpis = async (subjectId: string, subjectList: PrincipalSubjectPerformance[]) => {
+  await mockDelay(180);
+  const selected = subjectList.find((entry) => entry.subject === subjectId);
+  const average = selected?.average ?? 0;
+  const spread = 9;
+  return {
+    subjectAverage: average,
+    highestScore: Math.min(100, average + spread),
+    lowestScore: Math.max(0, average - spread),
+    teacherComplianceRate: Math.max(0, Math.min(100, average + 8)),
+  };
+};
+
+const buildMockSubjectTrend = async (subjectId: string, average: number) => {
+  await mockDelay(140);
+  const seed = subjectId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const offsets = [-4, 1, 3];
+
+  return offsets.map((offset, index) => {
+    const adjustedAverage = Math.max(0, Math.min(100, average + offset + ((seed + index) % 3)));
+    return {
+      termLabel: `Term ${index + 1}`,
+      average: adjustedAverage,
+      passRate: Math.max(0, Math.min(100, adjustedAverage + 6)),
+    };
+  });
+};
+
+const buildMockDeepDiveTrend = async (subjectId: string, average: number) => {
+  await mockDelay(140);
+  const seed = subjectId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return Array.from({ length: 6 }).map((_, index) => ({
+    week: `W${index + 1}`,
+    average: Math.max(0, Math.min(100, average + ((seed + index * 3) % 6) - 3)),
+  }));
+};
+
 // ========== HELPER FUNCTIONS ==========
 const formatCurrency = (amount: number) => `₦${amount.toLocaleString()}`;
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
@@ -222,12 +352,27 @@ export function PrincipalDashboard() {
   const [classApprovals, setClassApprovals] = useState<ClassResultApproval[]>(classResultApprovals);
   const [selectedClassApproval, setSelectedClassApproval] = useState<ClassResultApproval | null>(null);
   const [changeRequestReason, setChangeRequestReason] = useState('');
+
+  const [selectedClassForPrincipal, setSelectedClassForPrincipal] = useState<{ id: string; className: string } | null>(null);
+  const [selectedSubjectForPrincipal, setSelectedSubjectForPrincipal] = useState<string | null>(null);
+  const [subjectsForSelectedClass, setSubjectsForSelectedClass] = useState<string[]>([]);
+  const [principalSubjectKpis, setPrincipalSubjectKpis] = useState<PrincipalSubjectKpi | null>(null);
+  const [principalSubjectTrend, setPrincipalSubjectTrend] = useState<Array<{ termLabel: string; average: number; passRate: number }>>([]);
+  const [principalSubjectPerformanceList, setPrincipalSubjectPerformanceList] = useState<PrincipalSubjectPerformance[]>([]);
+  const [principalDeepDiveTrend, setPrincipalDeepDiveTrend] = useState<Array<{ week: string; average: number }>>([]);
+  const [principalGradeDist, setPrincipalGradeDist] = useState<Array<{ grade: string; count: number }>>([]);
+  const [principalAtRisk, setPrincipalAtRisk] = useState<PrincipalAtRiskStudent[]>([]);
+  const [isLoadingPrincipalAnalytics, setIsLoadingPrincipalAnalytics] = useState(false);
+  const [principalAnalyticsError, setPrincipalAnalyticsError] = useState<string | null>(null);
   
   // Block 7 state (no extra)
   
   // Fee oversight state (existing)
   const [selectedFeeTerm, setSelectedFeeTerm] = useState('');
   const [selectedFinanceClass, setSelectedFinanceClass] = useState<string | null>(null);
+  const [feeCatalog, setFeeCatalog] = useState<FeeItemCatalog[]>(() => loadFeeCatalog());
+  const [selectedFeeItemDetailId, setSelectedFeeItemDetailId] = useState<number | null>(null);
+  const [feeFilter, setFeeFilter] = useState<'all' | 'pending_approval' | 'approved' | 'rejected'>('all');
   
   // Refs for scrolling
   const approvalsSectionRef = useRef<HTMLDivElement | null>(null);
@@ -239,7 +384,161 @@ export function PrincipalDashboard() {
     { className: 'Grade 5A', billed: 150000, paid: 95000, outstanding: 55000, overdueAmount: 20000, collectionRate: 63.3 },
     { className: 'Grade 5B', billed: 140000, paid: 120000, outstanding: 20000, overdueAmount: 0, collectionRate: 85.7 },
   ];
-  const feeExecutiveKpi = { totalBilled: 290000, totalPaid: 215000, outstandingBalance: 75000, collectionRate: 74.1, pendingReceipts: 2, overdueTotal: 20000 };
+
+  useEffect(() => {
+    const unsubscribe = subscribeFeeCatalogUpdates(() => {
+      setFeeCatalog(loadFeeCatalog());
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const pendingFeeItems = useMemo(
+    () => feeCatalog.filter((item) => item.isActive && item.status === 'pending_approval'),
+    [feeCatalog],
+  );
+
+  const approvedFeeItems = useMemo(
+    () => feeCatalog.filter((item) => item.isActive && item.status === 'approved'),
+    [feeCatalog],
+  );
+
+  const feeExecutiveKpi = useMemo(() => {
+    const totalBilled = approvedFeeItems.reduce((sum, item) => sum + item.amount, 0);
+    const totalPaid = Math.round(totalBilled * 0.741);
+    const outstandingBalance = Math.max(0, totalBilled - totalPaid);
+    const collectionRate = totalBilled > 0 ? Math.round((totalPaid / totalBilled) * 1000) / 10 : 0;
+    const overdueTotal = Math.round(outstandingBalance * 0.3);
+
+    return {
+      totalBilled,
+      totalPaid,
+      outstandingBalance,
+      collectionRate,
+      pendingReceipts: pendingFeeItems.length,
+      overdueTotal,
+    };
+  }, [approvedFeeItems, pendingFeeItems.length]);
+
+  const approvePendingFeeItem = (feeItemId: number) => {
+    const next = approveFeeItem(feeItemId);
+    setFeeCatalog(next);
+  };
+
+  const rejectPendingFeeItem = (feeItemId: number) => {
+    const reason = window.prompt('Provide rejection reason:');
+    if (reason === null) return;
+
+    const next = rejectFeeItem(feeItemId, reason);
+    setFeeCatalog(next);
+  };
+
+  const viewFeeItemDetails = (feeItemId: number) => {
+    setSelectedFeeItemDetailId(feeItemId);
+  };
+
+  const selectedFeeItemDetail = useMemo(
+    () => feeCatalog.find((item) => item.id === selectedFeeItemDetailId) || null,
+    [feeCatalog, selectedFeeItemDetailId],
+  );
+
+  const filteredFeeItems = useMemo(
+    () =>
+      feeCatalog.filter((item) => {
+        if (feeFilter === 'all') return true;
+        return item.status === feeFilter;
+      }),
+    [feeCatalog, feeFilter],
+  );
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'pending_approval':
+        return 'pending';
+      case 'approved':
+        return 'approved';
+      case 'rejected':
+        return 'rejected';
+      default:
+        return 'default';
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPrincipalAnalytics = async () => {
+      if (!selectedClassForPrincipal) {
+        setSubjectsForSelectedClass([]);
+        setPrincipalSubjectPerformanceList([]);
+        setPrincipalGradeDist([]);
+        setPrincipalAtRisk([]);
+        setPrincipalSubjectKpis(null);
+        setPrincipalSubjectTrend([]);
+        setPrincipalDeepDiveTrend([]);
+        setPrincipalAnalyticsError(null);
+        return;
+      }
+
+      setIsLoadingPrincipalAnalytics(true);
+      setPrincipalAnalyticsError(null);
+
+      try {
+        const [subjects, subjectPerformance, gradeDist, classWideAtRisk] = await Promise.all([
+          buildMockSubjectListForClass(selectedClassForPrincipal.className),
+          buildMockSubjectPerformanceForClass(selectedClassForPrincipal.className),
+          buildMockGradeDistribution(selectedClassForPrincipal.className),
+          buildMockAtRiskStudents(selectedClassForPrincipal.className),
+        ]);
+
+        if (!isMounted) return;
+
+        setSubjectsForSelectedClass(subjects);
+        setPrincipalSubjectPerformanceList(subjectPerformance);
+        setPrincipalGradeDist(gradeDist);
+
+        if (selectedSubjectForPrincipal) {
+          const [subjectKpis, subjectTrend, deepDiveTrend, subjectAtRisk] = await Promise.all([
+            buildMockSubjectKpis(selectedSubjectForPrincipal, subjectPerformance),
+            buildMockSubjectTrend(
+              selectedSubjectForPrincipal,
+              subjectPerformance.find((entry) => entry.subject === selectedSubjectForPrincipal)?.average ?? 0,
+            ),
+            buildMockDeepDiveTrend(
+              selectedSubjectForPrincipal,
+              subjectPerformance.find((entry) => entry.subject === selectedSubjectForPrincipal)?.average ?? 0,
+            ),
+            buildMockAtRiskStudents(selectedClassForPrincipal.className, selectedSubjectForPrincipal),
+          ]);
+
+          if (!isMounted) return;
+
+          setPrincipalSubjectKpis(subjectKpis);
+          setPrincipalSubjectTrend(subjectTrend);
+          setPrincipalDeepDiveTrend(deepDiveTrend);
+          setPrincipalAtRisk(subjectAtRisk);
+        } else {
+          setPrincipalSubjectKpis(null);
+          setPrincipalSubjectTrend([]);
+          setPrincipalDeepDiveTrend([]);
+          setPrincipalAtRisk(classWideAtRisk);
+        }
+      } catch {
+        if (!isMounted) return;
+        setPrincipalAnalyticsError('Unable to load detailed analytics at the moment.');
+      } finally {
+        if (isMounted) {
+          setIsLoadingPrincipalAnalytics(false);
+        }
+      }
+    };
+
+    loadPrincipalAnalytics();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedClassForPrincipal, selectedSubjectForPrincipal]);
   
   // ========== HANDLERS ==========
   const handleApproveItem = () => {
@@ -508,24 +807,111 @@ export function PrincipalDashboard() {
       
       {/* ========== TAB 1: FEE OVERSIGHT ========== */}
       {activeMainTab === 'fee' && (
-        <Card title="Fee Oversight (Executive View)" action={
-          <select value={selectedFeeTerm} onChange={e => setSelectedFeeTerm(e.target.value)} className="border p-1 rounded">
-            <option>Term 3, 2026</option><option>Term 2, 2026</option>
-          </select>
-        }>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div className="p-3 border rounded"><p className="text-sm">Total Billed</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi.totalBilled)}</p></div>
-            <div className="p-3 border rounded bg-green-50"><p className="text-sm">Total Paid</p><p className="text-xl font-bold text-green-700">{formatCurrency(feeExecutiveKpi.totalPaid)}</p></div>
-            <div className="p-3 border rounded"><p className="text-sm">Outstanding</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi.outstandingBalance)}</p></div>
-            <div className="p-3 border rounded"><p className="text-sm">Collection Rate</p><p className="text-xl font-bold">{feeExecutiveKpi.collectionRate}%</p></div>
-          </div>
-          <Card title="Class-Level Fee Performance">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b"><th>Class</th><th>Billed</th><th>Paid</th><th>Outstanding</th><th>Collection Rate</th><th>Action</th></tr></thead>
-              <tbody>{feeClassRows.map(row => <tr key={row.className} className="border-b"><td>{row.className}</td><td>{formatCurrency(row.billed)}</td><td>{formatCurrency(row.paid)}</td><td>{formatCurrency(row.outstanding)}</td><td>{row.collectionRate}%</td><td><Button size="sm" variant="outline" onClick={() => setSelectedFinanceClass(row.className)}><Eye size={14} /> View</Button></td></tr>)}</tbody>
-            </table>
+        <>
+          <Card title="Fee Oversight (Executive View)" action={
+            <select value={selectedFeeTerm} onChange={e => setSelectedFeeTerm(e.target.value)} className="border p-1 rounded">
+              <option>Term 3, 2026</option><option>Term 2, 2026</option>
+            </select>
+          }>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <div className="p-3 border rounded"><p className="text-sm">Total Billed</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi.totalBilled)}</p></div>
+              <div className="p-3 border rounded bg-green-50"><p className="text-sm">Total Paid</p><p className="text-xl font-bold text-green-700">{formatCurrency(feeExecutiveKpi.totalPaid)}</p></div>
+              <div className="p-3 border rounded"><p className="text-sm">Outstanding</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi.outstandingBalance)}</p></div>
+              <div className="p-3 border rounded"><p className="text-sm">Collection Rate</p><p className="text-xl font-bold">{feeExecutiveKpi.collectionRate}%</p></div>
+            </div>
+            <Card title="Class-Level Fee Performance">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b"><th>Class</th><th>Billed</th><th>Paid</th><th>Outstanding</th><th>Collection Rate</th><th>Action</th></tr></thead>
+                <tbody>{feeClassRows.map(row => <tr key={row.className} className="border-b"><td>{row.className}</td><td>{formatCurrency(row.billed)}</td><td>{formatCurrency(row.paid)}</td><td>{formatCurrency(row.outstanding)}</td><td>{row.collectionRate}%</td><td><Button size="sm" variant="outline" onClick={() => setSelectedFinanceClass(row.className)}><Eye size={14} /> View</Button></td></tr>)}</tbody>
+              </table>
+            </Card>
           </Card>
-        </Card>
+
+          <Card title="Pending Fee Approvals">
+            {pendingFeeItems.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">No fee items awaiting approval</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b">
+                      <th>Name</th><th>Category</th><th>Amount</th><th>Scope</th><th>Due Date</th><th>Submitted</th><th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingFeeItems.map(item => (
+                      <tr key={item.id} className="border-b">
+                        <td className="font-medium">{item.name}</td>
+                        <td>{item.category}</td>
+                        <td>{formatCurrency(item.amount)}</td>
+                        <td>{item.term} • {item.classId ? `Class ${item.classId}` : 'All Classes'}</td>
+                        <td>{item.dueDate}</td>
+                        <td>{item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : '-'}</td>
+                        <td>
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => approvePendingFeeItem(item.id)}>Approve</Button>
+                            <Button size="sm" variant="destructive" onClick={() => rejectPendingFeeItem(item.id)}>Reject</Button>
+                            <Button size="sm" variant="outline" onClick={() => viewFeeItemDetails(item.id)}>Details</Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          <Card title="All Fee Items (Read-Only)" className="mt-6">
+            <div className="mb-4">
+              <select
+                value={feeFilter}
+                onChange={(e) => setFeeFilter(e.target.value as 'all' | 'pending_approval' | 'approved' | 'rejected')}
+                className="border rounded p-2 text-sm"
+              >
+                <option value="all">All</option>
+                <option value="pending_approval">Pending Approval</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th>Name &amp; Category</th>
+                    <th>Amount</th>
+                    <th>Scope</th>
+                    <th>Due Date</th>
+                    <th>Compulsory</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredFeeItems.map((item) => (
+                    <tr key={item.id} className="border-b">
+                      <td>
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">{item.category}</p>
+                      </td>
+                      <td>{formatCurrency(item.amount)}</td>
+                      <td>{item.term} • {item.classId ? `Class ${item.classId}` : 'All Classes'}</td>
+                      <td>{item.dueDate}</td>
+                      <td><Badge variant={item.isCompulsory ? 'approved' : 'default'}>{item.isCompulsory ? 'Yes' : 'No'}</Badge></td>
+                      <td><Badge variant={getStatusBadgeVariant(item.status)}>{item.status.replace('_', ' ')}</Badge></td>
+                      <td>{item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : '—'}</td>
+                      <td>
+                        <Button size="sm" variant="outline" onClick={() => viewFeeItemDetails(item.id)}>View Details</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
       )}
       
       {/* ========== TAB 2: SCHOOL KPI (Blocks 4 & 5) ========== */}
@@ -563,29 +949,76 @@ export function PrincipalDashboard() {
               <ResponsiveContainer width="100%" height={180}><PieChart><Pie data={transportDistribution} dataKey="count" nameKey="mode" cx="50%" cy="50%" outerRadius={60} label><Cell fill="#3b82f6"/><Cell fill="#10b981"/><Cell fill="#f59e0b"/><Cell fill="#8b5cf6"/></Pie><Tooltip /></PieChart></ResponsiveContainer>
             </Card>
           </div>
-          
-          {/* Result Release + Fee Gating (Block 5) */}
-          <Card title="Result Release Control & Fee Gating">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div><label>Term</label><select className="w-full border rounded p-2" value={selectedResultTerm} onChange={e=>setSelectedResultTerm(e.target.value)}><option>Term 3, 2026</option><option>Term 2, 2026</option></select></div>
-              <div><label>Exam Start Date</label><input type="date" className="w-full border rounded p-2" value={examStartDate} onChange={e=>setExamStartDate(e.target.value)} /></div>
-              <div><label>Exam End Date</label><input type="date" className="w-full border rounded p-2" value={examEndDate} onChange={e=>setExamEndDate(e.target.value)} /></div>
-            </div>
-            <div className="flex items-center justify-between p-4 bg-accent rounded mb-4">
-              <div><p className="font-medium">Result Visibility</p><p className="text-sm text-muted-foreground">{resultsReleased ? 'Visible to parents' : 'Hidden from parents'}</p>{examEndDate && new Date() < new Date(examEndDate) && <p className="text-yellow-600 text-sm">Results will not be visible until after exam end date.</p>}</div>
-              <button disabled={!examStartDate || !examEndDate} onClick={handleResultsToggle} className={`relative inline-flex h-6 w-11 rounded-full transition ${resultsReleased ? 'bg-green-600' : 'bg-gray-400'}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${resultsReleased ? 'translate-x-6' : 'translate-x-1'}`} /></button>
-            </div>
-            <div className="border rounded p-4">
-              <p className="font-medium mb-2">Fee Gating Policy</p>
-              <div className="flex gap-4 mb-3">
-                <label><input type="radio" name="policy" value="full_access" checked={feePolicy==='full_access'} onChange={()=>setFeePolicy('full_access')} /> Full Access (no fee block)</label>
-                <label><input type="radio" name="policy" value="partial_access" checked={feePolicy==='partial_access'} onChange={()=>setFeePolicy('partial_access')} /> Partial Access (summary only)</label>
-                <label><input type="radio" name="policy" value="block" checked={feePolicy==='block'} onChange={()=>setFeePolicy('block')} /> Block All Results</label>
+
+          <div className="mt-8 border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4">Detailed Class & Subject Analytics</h3>
+            <div className="flex flex-wrap gap-4 mb-6">
+              <div className="w-64">
+                <label className="text-sm font-medium">Select Class</label>
+                <select
+                  className="w-full border rounded p-2 mt-1"
+                  value={selectedClassForPrincipal?.id || ''}
+                  onChange={(e) => {
+                    const classObj = classPerformance.find((c) => c.class === e.target.value);
+                    setSelectedClassForPrincipal(classObj ? { id: classObj.class, className: classObj.class } : null);
+                    setSelectedSubjectForPrincipal(null);
+                  }}
+                >
+                  <option value="">-- Choose a class --</option>
+                  {classPerformance.map((c) => (
+                    <option key={c.class} value={c.class}>{c.class}</option>
+                  ))}
+                </select>
               </div>
-              <div className="bg-yellow-50 p-2 rounded text-sm mb-3"><AlertTriangle size={14} className="inline mr-1"/> {affectedStudentsCount} students have unpaid fees and will be affected by this policy.</div>
-              <Button onClick={handleApplyFeePolicy}>Apply Policy</Button>
+              <div className="w-64">
+                <label className="text-sm font-medium">Select Subject (optional)</label>
+                <select
+                  className="w-full border rounded p-2 mt-1"
+                  value={selectedSubjectForPrincipal || ''}
+                  onChange={(e) => setSelectedSubjectForPrincipal(e.target.value || null)}
+                  disabled={!selectedClassForPrincipal}
+                >
+                  <option value="">-- All subjects --</option>
+                  {subjectsForSelectedClass.map((subj) => (
+                    <option key={subj} value={subj}>{subj}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </Card>
+
+            {isLoadingPrincipalAnalytics ? (
+              <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Loading detailed analytics...
+              </div>
+            ) : null}
+
+            {principalAnalyticsError ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                {principalAnalyticsError}
+              </div>
+            ) : null}
+
+            {selectedClassForPrincipal && !isLoadingPrincipalAnalytics && !principalAnalyticsError ? (
+              <ClassSubjectAnalytics
+                selectedClass={selectedClassForPrincipal}
+                selectedSubjectId={selectedSubjectForPrincipal}
+                onSelectSubject={setSelectedSubjectForPrincipal}
+                subjectKpis={principalSubjectKpis ?? undefined}
+                subjectTrendData={principalSubjectTrend}
+                classPerformanceData={classPerformance.map((c) => ({
+                  className: c.class,
+                  averageScore: c.average,
+                  passRate: c.passRate,
+                  attendanceRate: c.attendanceRate,
+                }))}
+                subjectPerformanceList={principalSubjectPerformanceList}
+                deepDiveTrendData={principalDeepDiveTrend}
+                gradeDistributionData={principalGradeDist}
+                atRiskStudents={principalAtRisk}
+              />
+            ) : null}
+          </div>
         </>
       )}
       
@@ -647,7 +1080,7 @@ export function PrincipalDashboard() {
                 <div key={log.id} className={`p-3 border rounded-lg ${log.riskLevel === 'high' ? 'border-red-300 bg-red-50 dark:bg-red-950' : ''}`}>
                   <div className="flex justify-between items-start">
                     <div><span className="font-medium">{log.action}</span><span className="text-xs text-muted-foreground ml-2">{formatDateTime(log.timestamp)}</span></div>
-                    <Badge variant={log.riskLevel === 'high' ? 'destructive' : 'default'}>{log.riskLevel}</Badge>
+                    <Badge variant={log.riskLevel === 'high' ? 'rejected' : 'default'}>{log.riskLevel}</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{log.details}</p>
                   <p className="text-xs">By {log.userName} ({log.userRole}) • {log.module}</p>
@@ -671,6 +1104,29 @@ export function PrincipalDashboard() {
       
       {/* ========== TAB 4: RESULT APPROVAL (Block 8) ========== */}
       {activeMainTab === 'resultApproval' && (
+        <>
+        {/* Result Release + Fee Gating (Block 5) */}
+          <Card title="Result Release Control & Fee Gating">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div><label>Term</label><select className="w-full border rounded p-2" value={selectedResultTerm} onChange={e=>setSelectedResultTerm(e.target.value)}><option>Term 3, 2026</option><option>Term 2, 2026</option></select></div>
+              <div><label>Exam Start Date</label><input type="date" className="w-full border rounded p-2" value={examStartDate} onChange={e=>setExamStartDate(e.target.value)} /></div>
+              <div><label>Exam End Date</label><input type="date" className="w-full border rounded p-2" value={examEndDate} onChange={e=>setExamEndDate(e.target.value)} /></div>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-accent rounded mb-4">
+              <div><p className="font-medium">Result Visibility</p><p className="text-sm text-muted-foreground">{resultsReleased ? 'Visible to parents' : 'Hidden from parents'}</p>{examEndDate && new Date() < new Date(examEndDate) && <p className="text-yellow-600 text-sm">Results will not be visible until after exam end date.</p>}</div>
+              <button disabled={!examStartDate || !examEndDate} onClick={handleResultsToggle} className={`relative inline-flex h-6 w-11 rounded-full transition ${resultsReleased ? 'bg-green-600' : 'bg-gray-400'}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${resultsReleased ? 'translate-x-6' : 'translate-x-1'}`} /></button>
+            </div>
+            <div className="border rounded p-4">
+              <p className="font-medium mb-2">Fee Gating Policy</p>
+              <div className="flex gap-4 mb-3">
+                <label><input type="radio" name="policy" value="full_access" checked={feePolicy==='full_access'} onChange={()=>setFeePolicy('full_access')} /> Full Access (no fee block)</label>
+                <label><input type="radio" name="policy" value="partial_access" checked={feePolicy==='partial_access'} onChange={()=>setFeePolicy('partial_access')} /> Partial Access (summary only)</label>
+                <label><input type="radio" name="policy" value="block" checked={feePolicy==='block'} onChange={()=>setFeePolicy('block')} /> Block All Results</label>
+              </div>
+              <div className="bg-yellow-50 p-2 rounded text-sm mb-3"><AlertTriangle size={14} className="inline mr-1"/> {affectedStudentsCount} students have unpaid fees and will be affected by this policy.</div>
+              <Button onClick={handleApplyFeePolicy}>Apply Policy</Button>
+            </div>
+          </Card>
         <Card title={`Result Approval – ${selectedTermForApproval}`} action={
           <div className="flex gap-2">
             <select className="border rounded p-1" value={selectedTermForApproval} onChange={e=>setSelectedTermForApproval(e.target.value)}><option>term-3-2026</option><option>term-2-2026</option></select>
@@ -685,7 +1141,7 @@ export function PrincipalDashboard() {
                 {classApprovals.map(cls => (
                   <tr key={cls.className} className="border-b">
                     <td>{cls.className}</td><td>{cls.teacher}</td><td>{cls.assessmentCompletion}%</td>
-                    <td><Badge variant={cls.status === 'approved' ? 'success' : cls.status === 'pending' ? 'warning' : 'destructive'}>{cls.status.replace('_',' ')}</Badge></td>
+                      <td><Badge variant={cls.status === 'approved' ? 'approved' : cls.status === 'pending' ? 'pending' : 'rejected'}>{cls.status.replace('_',' ')}</Badge></td>
                     <td>{formatDate(cls.lastUpdated)}</td>
                     <td><Button size="sm" variant="outline" onClick={()=>setSelectedClassApproval(cls)}>Review</Button></td>
                   </tr>
@@ -693,8 +1149,10 @@ export function PrincipalDashboard() {
               </tbody>
             </table>
           </div>
+          
           <p className="text-xs text-muted-foreground mt-4">Note: Even after approval, fee gating policy (Block 5) still applies to parent visibility.</p>
         </Card>
+        </>
       )}
       
       {/* ========== TAB 5: PARENT ENGAGEMENT (Block 7) ========== */}
@@ -783,6 +1241,26 @@ export function PrincipalDashboard() {
       {selectedFinanceClass && (
         <Modal isOpen onClose={()=>setSelectedFinanceClass(null)} title={`Fee Details – ${selectedFinanceClass}`} footer={<Button onClick={()=>setSelectedFinanceClass(null)}>Close</Button>}>
           <p>Per‑student breakdown would appear here (mock data).</p>
+        </Modal>
+      )}
+
+      {selectedFeeItemDetail && (
+        <Modal
+          isOpen
+          onClose={() => setSelectedFeeItemDetailId(null)}
+          title={`Fee Item Details – ${selectedFeeItemDetail.name}`}
+          footer={<Button onClick={() => setSelectedFeeItemDetailId(null)}>Close</Button>}
+        >
+          <div className="space-y-2 text-sm">
+            <p><strong>Category:</strong> {selectedFeeItemDetail.category}</p>
+            <p><strong>Amount:</strong> {formatCurrency(selectedFeeItemDetail.amount)}</p>
+            <p><strong>Scope:</strong> {selectedFeeItemDetail.term} • {selectedFeeItemDetail.classId ? `Class ${selectedFeeItemDetail.classId}` : 'All Classes'}</p>
+            <p><strong>Due Date:</strong> {selectedFeeItemDetail.dueDate}</p>
+            <p><strong>Status:</strong> {selectedFeeItemDetail.status}</p>
+            <p><strong>Submitted At:</strong> {selectedFeeItemDetail.submittedAt ? new Date(selectedFeeItemDetail.submittedAt).toLocaleString() : '-'}</p>
+            <p><strong>Approved At:</strong> {selectedFeeItemDetail.approvedAt ? new Date(selectedFeeItemDetail.approvedAt).toLocaleString() : '-'}</p>
+            <p><strong>Rejection Reason:</strong> {selectedFeeItemDetail.rejectionReason || '-'}</p>
+          </div>
         </Modal>
       )}
     </div>

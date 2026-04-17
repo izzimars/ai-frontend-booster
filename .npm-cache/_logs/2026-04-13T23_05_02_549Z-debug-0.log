@@ -1,0 +1,20 @@
+0 verbose cli /Users/enyata/.nvm/versions/node/v20.19.4/bin/node /Users/enyata/.nvm/versions/node/v20.19.4/bin/npm
+1 info using npm@10.8.2
+2 info using node@v20.19.4
+3 silly config load:file:/Users/enyata/.nvm/versions/node/v20.19.4/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/enyata/Downloads/Implement File Instructions/.npmrc
+5 silly config load:file:/Users/enyata/.npmrc
+6 silly config load:file:/Users/enyata/.nvm/versions/node/v20.19.4/etc/npmrc
+7 verbose title npm ls
+8 verbose argv "ls" "--all" "--json"
+9 verbose logfile logs-max:10 dir:/Users/enyata/Downloads/Implement File Instructions/.npm-cache/_logs/2026-04-13T23_05_02_549Z-
+10 verbose logfile /Users/enyata/Downloads/Implement File Instructions/.npm-cache/_logs/2026-04-13T23_05_02_549Z-debug-0.log
+11 silly packumentCache heap:2197815296 maxSize:549453824 maxEntrySize:274726912
+12 silly logfile done cleaning log files
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: node_modules
+14 verbose cwd /Users/enyata/Downloads/Implement File Instructions
+15 verbose os Darwin 23.6.0
+16 verbose node v20.19.4
+17 verbose npm  v10.8.2
+18 verbose exit 0
+19 info ok

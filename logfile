@@ -1,0 +1,73 @@
+2026-04-15 20:50:34.131 WAT [3925] LOG:  starting PostgreSQL 14.18 (Homebrew) on x86_64-apple-darwin23.6.0, compiled by Apple clang version 16.0.0 (clang-1600.0.26.6), 64-bit
+2026-04-15 20:50:34.133 WAT [3925] LOG:  listening on IPv6 address "::1", port 5432
+2026-04-15 20:50:34.133 WAT [3925] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2026-04-15 20:50:34.134 WAT [3925] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2026-04-15 20:50:34.164 WAT [3926] LOG:  database system was interrupted; last known up at 2026-04-15 16:48:59 WAT
+2026-04-15 20:50:35.051 WAT [3926] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-04-15 20:50:35.063 WAT [3926] LOG:  redo starts at 0/774EF368
+2026-04-15 20:50:35.063 WAT [3926] LOG:  invalid record length at 0/774EF450: wanted 24, got 0
+2026-04-15 20:50:35.063 WAT [3926] LOG:  redo done at 0/774EF418 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-04-15 20:50:35.085 WAT [3925] LOG:  database system is ready to accept connections
+2026-04-15 20:53:10.528 WAT [4608] ERROR:  column "level_id" of relation "classes" does not exist at character 52
+2026-04-15 20:53:10.528 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'Senior Secondary', 1, 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41', 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41')
+2026-04-15 20:53:10.530 WAT [4608] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 20:53:10.530 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'Senior Secondary', 2, 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41', 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41')
+2026-04-15 20:53:10.530 WAT [4608] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 20:53:10.530 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'Senior Secondary', 3, 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41', 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41')
+2026-04-15 20:53:21.917 WAT [4608] ERROR:  column "level_id" of relation "classes" does not exist at character 52
+2026-04-15 20:53:21.917 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'Senior Secondary', 1, 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41', 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41')
+2026-04-15 20:53:21.919 WAT [4608] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 20:53:21.919 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'Senior Secondary', 2, 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41', 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41')
+2026-04-15 20:53:21.920 WAT [4608] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 20:53:21.920 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'Senior Secondary', 3, 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41', 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41')
+2026-04-15 20:55:00.457 WAT [4608] ERROR:  column "level_id" of relation "classes" does not exist at character 52
+2026-04-15 20:55:00.457 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'junior secondary', 1, 'cat-c7bf2f11-66c6-4661-907c-6478f972d695', 'cat-c7bf2f11-66c6-4661-907c-6478f972d695')
+2026-04-15 20:55:00.458 WAT [4608] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 20:55:00.458 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'junior secondary', 2, 'cat-c7bf2f11-66c6-4661-907c-6478f972d695', 'cat-c7bf2f11-66c6-4661-907c-6478f972d695')
+2026-04-15 20:55:00.458 WAT [4608] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 20:55:00.458 WAT [4608] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'junior secondary', 3, 'cat-c7bf2f11-66c6-4661-907c-6478f972d695', 'cat-c7bf2f11-66c6-4661-907c-6478f972d695')
+2026-04-15 21:01:09.646 WAT [5708] ERROR:  relation "public.lessons" does not exist
+2026-04-15 21:01:09.646 WAT [5708] STATEMENT:  /* Replace with your SQL commands */
+	ALTER TABLE public.lessons
+	  ADD COLUMN IF NOT EXISTS prompt_counter integer DEFAULT 0,
+	  ADD COLUMN IF NOT EXISTS generated boolean DEFAULT true;
+	
+2026-04-15 21:15:24.408 WAT [6080] ERROR:  column "level_id" of relation "classes" already exists
+2026-04-15 21:15:24.408 WAT [6080] STATEMENT:  /* Replace with your SQL commands */
+	ALTER TABLE classes
+	ADD COLUMN level_id TEXT NULL;
+	
+2026-04-15 21:22:57.761 WAT [6945] ERROR:  duplicate key value violates unique constraint "classes_school_id_name_key"
+2026-04-15 21:22:57.761 WAT [6945] DETAIL:  Key (school_id, name)=(scl-0403b098-4fa4-4077-bb1e-f3932062b508, junior secondary) already exists.
+2026-04-15 21:22:57.761 WAT [6945] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'junior secondary', 2, 'cat-c7bf2f11-66c6-4661-907c-6478f972d695', 'cat-c7bf2f11-66c6-4661-907c-6478f972d695')
+2026-04-15 21:22:57.763 WAT [6945] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 21:22:57.763 WAT [6945] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'junior secondary', 3, 'cat-c7bf2f11-66c6-4661-907c-6478f972d695', 'cat-c7bf2f11-66c6-4661-907c-6478f972d695')
+2026-04-15 21:23:05.839 WAT [6945] ERROR:  duplicate key value violates unique constraint "classes_school_id_name_key"
+2026-04-15 21:23:05.839 WAT [6945] DETAIL:  Key (school_id, name)=(scl-0403b098-4fa4-4077-bb1e-f3932062b508, junior secondary) already exists.
+2026-04-15 21:23:05.839 WAT [6945] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'junior secondary', 2, 'cat-c7bf2f11-66c6-4661-907c-6478f972d695', 'cat-c7bf2f11-66c6-4661-907c-6478f972d695')
+2026-04-15 21:23:05.839 WAT [6945] ERROR:  current transaction is aborted, commands ignored until end of transaction block
+2026-04-15 21:23:05.839 WAT [6945] STATEMENT:  INSERT INTO classes (school_id, name, level_order, level_id, category_uuid) 
+	          VALUES ('scl-0403b098-4fa4-4077-bb1e-f3932062b508', 'junior secondary', 3, 'cat-c7bf2f11-66c6-4661-907c-6478f972d695', 'cat-c7bf2f11-66c6-4661-907c-6478f972d695')
+2026-04-16 11:32:25.338 WAT [3933] LOG:  stats_timestamp 2026-04-16 11:32:25.5822+01 is later than collector's time 2026-04-16 11:32:25.336246+01 for database 14118
+2026-04-17 09:28:56.667 WAT [3888] LOG:  starting PostgreSQL 14.18 (Homebrew) on x86_64-apple-darwin23.6.0, compiled by Apple clang version 16.0.0 (clang-1600.0.26.6), 64-bit
+2026-04-17 09:28:56.670 WAT [3888] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2026-04-17 09:28:56.670 WAT [3888] LOG:  listening on IPv6 address "::1", port 5432
+2026-04-17 09:28:56.671 WAT [3888] LOG:  listening on Unix socket "/tmp/.s.PGSQL.5432"
+2026-04-17 09:28:56.708 WAT [3889] LOG:  database system was interrupted; last known up at 2026-04-17 00:25:10 WAT
+2026-04-17 09:28:57.571 WAT [3889] LOG:  database system was not properly shut down; automatic recovery in progress
+2026-04-17 09:28:57.581 WAT [3889] LOG:  redo starts at 0/776D1808
+2026-04-17 09:28:57.581 WAT [3889] LOG:  invalid record length at 0/776D18F0: wanted 24, got 0
+2026-04-17 09:28:57.581 WAT [3889] LOG:  redo done at 0/776D18B8 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
+2026-04-17 09:28:57.607 WAT [3888] LOG:  database system is ready to accept connections

@@ -14,6 +14,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 type DailyActivityStatus = 'not_started' | 'in_progress' | 'completed';
 type SyllabusStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+export type TeacherDashboardTab = 'todays_classes' | 'class' | 'syllabus' | 'lesson_notes' | 'assessment' | 'grade_configuration' | 'performance' | 'medical' | 'pickup';
 
 type SyllabusEntry = {
   id: string;
@@ -603,7 +604,11 @@ function GenericEntryModal({
 }
 
 
-export function TeacherDashboard() {
+type TeacherDashboardProps = {
+  activeTabOverride?: TeacherDashboardTab;
+};
+
+export function TeacherDashboard({ activeTabOverride }: TeacherDashboardProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const gradeConfigurationTopRef = useRef<HTMLDivElement | null>(null);
@@ -633,7 +638,7 @@ export function TeacherDashboard() {
     dueDate: new Date().toISOString().slice(0, 10),
   };
 
-  const [activeTab, setActiveTab] = useState<'todays_classes' | 'class' | 'syllabus' | 'lesson_notes' | 'assessment' | 'grade_configuration' | 'performance' | 'medical' | 'pickup'>('todays_classes');
+  const [activeTab, setActiveTab] = useState<TeacherDashboardTab>(activeTabOverride || 'todays_classes');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('2025/2026 Term 2');
@@ -971,6 +976,12 @@ export function TeacherDashboard() {
     const loadingTimer = window.setTimeout(() => setGradeContextLoading(false), 180);
     return () => window.clearTimeout(loadingTimer);
   }, [selectedGradeClassId, selectedGradeSubjectId, selectedGradeTermId]);
+
+  useEffect(() => {
+    if (!activeTabOverride) return;
+
+    setActiveTab(activeTabOverride);
+  }, [activeTabOverride]);
 
   useEffect(() => {
     const restored = location.state as { activeTab?: string; selectedClass?: string; selectedSubject?: string } | null;

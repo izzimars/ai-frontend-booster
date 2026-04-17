@@ -1,0 +1,86 @@
+0 verbose cli /Users/enyata/.nvm/versions/node/v20.19.4/bin/node /Users/enyata/.nvm/versions/node/v20.19.4/bin/npm
+1 info using npm@10.8.2
+2 info using node@v20.19.4
+3 silly config load:file:/Users/enyata/.nvm/versions/node/v20.19.4/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/enyata/Downloads/Implement File Instructions/.npmrc
+5 silly config load:file:/Users/enyata/.npmrc
+6 silly config load:file:/Users/enyata/.nvm/versions/node/v20.19.4/etc/npmrc
+7 verbose title npm outdated
+8 verbose argv "outdated"
+9 verbose logfile logs-max:10 dir:/Users/enyata/Downloads/Implement File Instructions/.npm-cache/_logs/2026-04-13T23_04_40_604Z-
+10 verbose logfile /Users/enyata/Downloads/Implement File Instructions/.npm-cache/_logs/2026-04-13T23_04_40_604Z-debug-0.log
+11 silly packumentCache heap:2197815296 maxSize:549453824 maxEntrySize:274726912
+12 silly logfile done cleaning log files
+13 verbose shrinkwrap failed to load node_modules/.package-lock.json out of date, updated: node_modules
+14 http fetch GET https://registry.npmjs.org/@radix-ui%2freact-popover attempt 1 failed with ERR_SSL_SSLV3_ALERT_BAD_RECORD_MAC
+15 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-dialog 1846ms (cache revalidated)
+16 http fetch GET 200 https://registry.npmjs.org/react-dom 1925ms (cache revalidated)
+17 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-collapsible 1934ms (cache revalidated)
+18 http fetch GET 200 https://registry.npmjs.org/@emotion%2fstyled 1971ms (cache revalidated)
+19 http fetch GET 200 https://registry.npmjs.org/@mui%2ficons-material 1974ms (cache revalidated)
+20 http fetch GET 200 https://registry.npmjs.org/@mui%2fmaterial 1989ms (cache revalidated)
+21 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-hover-card 1987ms (cache revalidated)
+22 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-dropdown-menu 2002ms (cache revalidated)
+23 http fetch GET 200 https://registry.npmjs.org/@emotion%2freact 2013ms (cache revalidated)
+24 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-context-menu 2017ms (cache revalidated)
+25 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-avatar 2024ms (cache revalidated)
+26 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-navigation-menu 2023ms (cache revalidated)
+27 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-progress 2032ms (cache revalidated)
+28 http fetch GET 200 https://registry.npmjs.org/react 2089ms (cache revalidated)
+29 http fetch GET 200 https://registry.npmjs.org/@popperjs%2fcore 2101ms (cache revalidated)
+30 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-accordion 2119ms (cache revalidated)
+31 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-aspect-ratio 2122ms (cache revalidated)
+32 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-label 2134ms (cache revalidated)
+33 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-radio-group 2141ms (cache revalidated)
+34 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-checkbox 2155ms (cache revalidated)
+35 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-alert-dialog 2162ms (cache revalidated)
+36 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-slot 2156ms (cache revalidated)
+37 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-menubar 2174ms (cache revalidated)
+38 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-separator 2185ms (cache revalidated)
+39 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-toggle 2202ms (cache revalidated)
+40 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-scroll-area 2211ms (cache revalidated)
+41 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-toggle-group 2225ms (cache revalidated)
+42 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-select 2276ms (cache revalidated)
+43 http fetch GET 200 https://registry.npmjs.org/class-variance-authority 2285ms (cache revalidated)
+44 http fetch GET 200 https://registry.npmjs.org/cmdk 2285ms (cache revalidated)
+45 http fetch GET 200 https://registry.npmjs.org/embla-carousel-react 2286ms (cache revalidated)
+46 http fetch GET 200 https://registry.npmjs.org/input-otp 2289ms (cache revalidated)
+47 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-slider 2305ms (cache revalidated)
+48 http fetch GET 200 https://registry.npmjs.org/date-fns 2298ms (cache revalidated)
+49 http fetch GET 200 https://registry.npmjs.org/next-themes 2301ms (cache revalidated)
+50 http fetch GET 200 https://registry.npmjs.org/react-popper 2342ms (cache revalidated)
+51 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-switch 2360ms (cache revalidated)
+52 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-tooltip 2365ms (cache revalidated)
+53 http fetch GET 200 https://registry.npmjs.org/lucide-react 2387ms (cache revalidated)
+54 http fetch GET 200 https://registry.npmjs.org/canvas-confetti 2429ms (cache revalidated)
+55 http fetch GET 200 https://registry.npmjs.org/clsx 2444ms (cache revalidated)
+56 http fetch GET 200 https://registry.npmjs.org/lodash-es 2439ms (cache revalidated)
+57 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-tabs 2451ms (cache revalidated)
+58 http fetch GET 200 https://registry.npmjs.org/react-day-picker 2444ms (cache revalidated)
+59 http fetch GET 200 https://registry.npmjs.org/motion 2462ms (cache revalidated)
+60 http fetch GET 200 https://registry.npmjs.org/react-slick 2460ms (cache revalidated)
+61 http fetch GET 200 https://registry.npmjs.org/react-router 2466ms (cache revalidated)
+62 http fetch GET 200 https://registry.npmjs.org/react-hook-form 2481ms (cache revalidated)
+63 http fetch GET 200 https://registry.npmjs.org/react-router-dom 2503ms (cache revalidated)
+64 http fetch GET 200 https://registry.npmjs.org/sonner 2507ms (cache revalidated)
+65 http fetch GET 200 https://registry.npmjs.org/vaul 2510ms (cache revalidated)
+66 http fetch GET 200 https://registry.npmjs.org/tailwindcss 2603ms (cache revalidated)
+67 http fetch GET 200 https://registry.npmjs.org/axios 2664ms (cache revalidated)
+68 http fetch GET 200 https://registry.npmjs.org/tw-animate-css 2651ms (cache revalidated)
+69 http fetch GET 200 https://registry.npmjs.org/xlsx 2651ms (cache revalidated)
+70 http fetch GET 200 https://registry.npmjs.org/recharts 2657ms (cache revalidated)
+71 http fetch GET 200 https://registry.npmjs.org/vite 2663ms (cache revalidated)
+72 http fetch GET 200 https://registry.npmjs.org/react-resizable-panels 2690ms (cache revalidated)
+73 http fetch GET 200 https://registry.npmjs.org/@tailwindcss%2fvite 2691ms (cache revalidated)
+74 http fetch GET 200 https://registry.npmjs.org/tailwind-merge 2699ms (cache revalidated)
+75 http fetch GET 200 https://registry.npmjs.org/react-responsive-masonry 2708ms (cache revalidated)
+76 http fetch GET 200 https://registry.npmjs.org/@vitejs%2fplugin-react 2708ms (cache revalidated)
+77 http fetch GET 200 https://registry.npmjs.org/react-dnd 2718ms (cache revalidated)
+78 http fetch GET 200 https://registry.npmjs.org/react-dnd-html5-backend 2728ms (cache revalidated)
+79 http fetch GET 200 https://registry.npmjs.org/@radix-ui%2freact-popover 11891ms (cache revalidated)
+80 verbose cwd /Users/enyata/Downloads/Implement File Instructions
+81 verbose os Darwin 23.6.0
+82 verbose node v20.19.4
+83 verbose npm  v10.8.2
+84 verbose exit 1
+85 verbose code 1

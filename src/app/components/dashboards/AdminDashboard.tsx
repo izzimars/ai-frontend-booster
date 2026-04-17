@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '../ui
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Skeleton } from '../ui/skeleton';
 import { useNavigate } from 'react-router-dom';
+import { ClassSubjectAnalytics } from '../ClassSubjectAnalytics';
 
 type AtRiskStudent = {
   id: string;
@@ -2936,168 +2937,25 @@ export function AdminDashboard() {
                 </div>
               </Card>
 
-              {selectedClassForDrill && selectedSubjectId && (
-                <div className="relative">
-                <Card title={`Specific Subject Analysis: ${selectedSubjectId} • ${selectedClassForDrill.className}`}>
-                  {selectedSubjectKpis && selectedSubjectTrendData.length > 0 ? (
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-                        <div className="rounded-lg border border-border p-3">
-                          <p className="text-xs text-muted-foreground">Subject Average</p>
-                          <p className="text-2xl font-bold mt-2">{selectedSubjectKpis.subjectAverage}%</p>
-                        </div>
-                        <div className="rounded-lg border border-border p-3">
-                          <p className="text-xs text-muted-foreground">Highest Score</p>
-                          <p className="text-2xl font-bold mt-2">{selectedSubjectKpis.highestScore}%</p>
-                        </div>
-                        <div className="rounded-lg border border-border p-3">
-                          <p className="text-xs text-muted-foreground">Lowest Score</p>
-                          <p className="text-2xl font-bold mt-2">{selectedSubjectKpis.lowestScore}%</p>
-                        </div>
-                        <div className="rounded-lg border border-border p-3">
-                          <p className="text-xs text-muted-foreground">Teacher Compliance Rate</p>
-                          <p className="text-2xl font-bold mt-2">
-                            {selectedSubjectKpis.teacherComplianceRate === null ? 'N/A' : `${selectedSubjectKpis.teacherComplianceRate}%`}
-                          </p>
-                        </div>
-                      </div>
-
-                      <ResponsiveContainer width="100%" height={260}>
-                        <LineChart data={selectedSubjectTrendData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="termLabel" />
-                          <YAxis domain={[0, 100]} />
-                          <Tooltip />
-                          <Line type="monotone" dataKey="average" stroke="#2563eb" strokeWidth={3} name="Average Score" />
-                          <Line type="monotone" dataKey="passRate" stroke="#16a34a" strokeWidth={2} strokeDasharray="6 4" name="Pass Rate" />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </>
-                  ) : (
-                    <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                      Subject selected, but no trend records are available for the current range.
-                    </div>
-                  )}
-                </Card>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card title="Score Distribution by Class">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={classPerformance}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="className" />
-                      <YAxis domain={[0, 100]} />
-                      <Tooltip />
-                      <Bar dataKey="averageScore" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-                <Card title="Pass Rate vs Attendance Trend">
-                  <ResponsiveContainer width="100%" height={260}>
-                    <LineChart data={classPerformance}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="className" />
-                      <YAxis yAxisId="left" domain={[0, 100]} />
-                      <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
-                      <Tooltip />
-                      <Line yAxisId="left" type="monotone" dataKey="passRate" stroke="#16a34a" strokeWidth={2} name="Pass Rate" />
-                      <Line yAxisId="right" type="monotone" dataKey="attendanceRate" stroke="#f59e0b" strokeWidth={2} name="Attendance" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Card>
-              </div>
-
-              {selectedClassForDrill && (
-                <Card
-                  title={`Class Deep Dive: ${selectedClassForDrill.className}`}
-                  action={
-                    selectedSubjectId ? (
-                      <Button size="sm" variant="outline" onClick={() => setSelectedSubjectId(null)}>
-                        Clear Filter
-                      </Button>
-                    ) : null
-                  }
-                >
-                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm font-medium mb-2">Subject-Level Metrics</p>
-                      <div className="space-y-2">
-                        {selectedSubjectPerformance.map((subjectRow) => (
-                          <div
-                            key={subjectRow.subject}
-                            className={`p-2 border rounded cursor-pointer transition-colors ${
-                              selectedSubjectId === subjectRow.subject
-                                ? 'border-primary bg-accent/30'
-                                : 'border-border hover:bg-muted/30'
-                            }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const nextSubject = selectedSubjectId === subjectRow.subject ? null : subjectRow.subject;
-                              setSelectedSubjectId(nextSubject);
-                              setSelectedSubjectDetail(nextSubject || '');
-                            }}
-                          >
-                            <div className="flex justify-between text-sm">
-                              <span>{subjectRow.subject}</span>
-                              <Badge variant="default">Avg {subjectRow.average}%</Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-1">Pass Rate: {subjectRow.passRate}%</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium mb-2">
-                        {selectedSubjectId ? `${selectedSubjectId} Performance Trend` : 'Grade Distribution Histogram'}
-                      </p>
-                      {selectedSubjectId ? (
-                        <ResponsiveContainer width="100%" height={200}>
-                          <LineChart data={deepDiveSubjectTrendData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="week" />
-                            <YAxis domain={[0, 100]} />
-                            <Tooltip />
-                            <Line type="monotone" dataKey="average" stroke="#6366f1" strokeWidth={2.5} name="Weekly Average" />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <ResponsiveContainer width="100%" height={200}>
-                          <BarChart data={gradeDistributionData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="grade" />
-                            <YAxis />
-                            <Tooltip />
-                            <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium mb-2">
-                        At-Risk Students (&lt; 40%) {selectedSubjectId ? `- ${selectedSubjectId}` : ''}
-                      </p>
-                      <div className="space-y-2 max-h-[220px] overflow-y-auto">
-                        {filteredAtRiskStudents.length > 0 ? (
-                          filteredAtRiskStudents.map((student: AtRiskStudent) => (
-                            <div key={student.id} className="p-2 border border-red-200 bg-red-50 dark:bg-red-950/30 rounded">
-                              <p className="text-sm font-medium">{student.name}</p>
-                              <p className="text-xs text-red-700 dark:text-red-300">
-                                {selectedSubjectId ? 'Subject Average' : 'Cumulative Average'}: {student.cumulativeAverage}%
-                              </p>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-3 border border-dashed rounded text-sm text-muted-foreground">
-                            No at-risk students found for this {selectedSubjectId ? 'subject' : 'class'} in the selected range.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              )}
+              <ClassSubjectAnalytics
+                selectedClass={
+                  selectedClassForDrill
+                    ? { id: String(selectedClassForDrill.classId), className: selectedClassForDrill.className }
+                    : null
+                }
+                selectedSubjectId={selectedSubjectId}
+                onSelectSubject={(subjectId) => {
+                  setSelectedSubjectId(subjectId);
+                  setSelectedSubjectDetail(subjectId || '');
+                }}
+                subjectKpis={selectedSubjectKpis || undefined}
+                subjectTrendData={selectedSubjectTrendData}
+                classPerformanceData={classPerformance}
+                subjectPerformanceList={selectedSubjectPerformance}
+                deepDiveTrendData={deepDiveSubjectTrendData}
+                gradeDistributionData={gradeDistributionData}
+                atRiskStudents={filteredAtRiskStudents}
+              />
             </>
           )}
         </div>
