@@ -71,3 +71,239 @@
 2026-04-17 09:28:57.581 WAT [3889] LOG:  invalid record length at 0/776D18F0: wanted 24, got 0
 2026-04-17 09:28:57.581 WAT [3889] LOG:  redo done at 0/776D18B8 system usage: CPU: user: 0.00 s, system: 0.00 s, elapsed: 0.00 s
 2026-04-17 09:28:57.607 WAT [3888] LOG:  database system is ready to accept connections
+2026-04-17 16:06:58.858 WAT [27286] ERROR:  relation "fee_setups" does not exist at character 151
+2026-04-17 16:06:58.858 WAT [27286] STATEMENT:  
+	    WITH fee_data AS (
+	      -- Get total billed amount from fee setups
+	      SELECT 
+	        COALESCE(SUM(fs.amount), 0) AS total_billed
+	      FROM fee_setups fs
+	      JOIN classes cl ON fs.class_id = cl.uuid
+	      WHERE fs.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	        AND fs.term_id = null 
+	        AND cl.level_id = 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41'
+	    ),
+	    payment_data AS (
+	      -- Get payment metrics
+	      SELECT
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'approved'), 0) AS total_paid,
+	        COUNT(*) FILTER (WHERE fp.status = 'pending') AS pending_count,
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'pending' AND NOW() > 
+	          t.end_date), 0) AS overdue_total
+	      FROM fee_payments fp
+	      JOIN enrollments e ON fp.enrollment_id = e.uuid
+	      JOIN classes cl ON e.student_id IN (SELECT student_id FROM enrollments WHERE school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508')
+	      JOIN terms t ON fp.term_id = t.uuid
+	      WHERE e.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	        AND fp.term_id = null 
+	        AND cl.level_id = 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41'
+	        AND e.status = 'active'
+	    )
+	    SELECT
+	      fd.total_billed,
+	      pd.total_paid,
+	      (fd.total_billed - pd.total_paid) AS outstanding_balance,
+	      CASE 
+	        WHEN fd.total_billed = 0 THEN 0
+	        ELSE (pd.total_paid::float / fd.total_billed::float) * 100
+	      END AS collection_rate,
+	      pd.pending_count AS pending_receipts,
+	      pd.overdue_total
+	    FROM fee_data fd, payment_data pd
+	  
+2026-04-17 16:06:58.862 WAT [26540] ERROR:  column "name" does not exist at character 110
+2026-04-17 16:06:58.862 WAT [26540] STATEMENT:  
+	    SELECT * FROM fee_items 
+	    WHERE school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	    ORDER BY name ASC
+	  
+2026-04-17 16:06:58.903 WAT [26539] ERROR:  relation "fee_setups" does not exist at character 493
+2026-04-17 16:06:58.903 WAT [26539] STATEMENT:  
+	    WITH arm_metrics AS (
+	      SELECT
+	        ar.uuid,
+	        ar.name,
+	        COALESCE(SUM(fs.amount), 0) AS total_billed,
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'approved'), 0) AS total_paid,
+	        COALESCE(
+	          SUM(fp.amount) FILTER (WHERE fp.status = 'pending' AND NOW() > t.end_date),
+	          0
+	        ) AS overdue_amount
+	      FROM arms ar
+	      LEFT JOIN enrollments e ON e.arm_id = ar.uuid AND e.term_id = null AND e.status = 'active'
+	      LEFT JOIN fee_setups fs ON fs.class_id = ar.class_id AND fs.term_id = null
+	      LEFT JOIN fee_payments fp ON fp.enrollment_id = e.uuid
+	      LEFT JOIN terms t ON t.uuid = null
+	      WHERE ar.class_id = null
+	        AND e.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508'
+	      GROUP BY ar.uuid, ar.name
+	    )
+	    SELECT
+	      name AS arm_name,
+	      total_billed AS billed,
+	      total_paid AS paid,
+	      (total_billed - total_paid) AS outstanding,
+	      overdue_amount AS overdueAmount,
+	      CASE 
+	        WHEN total_billed = 0 THEN 0
+	        ELSE (total_paid::float / total_billed::float) * 100
+	      END AS collectionRate
+	    FROM arm_metrics
+	    ORDER BY arm_name ASC
+	    LIMIT 50
+	    OFFSET 0
+	  
+2026-04-17 16:32:27.640 WAT [28058] ERROR:  column "name" does not exist at character 110
+2026-04-17 16:32:27.640 WAT [28058] STATEMENT:  
+	    SELECT * FROM fee_items 
+	    WHERE school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	    ORDER BY name ASC
+	  
+2026-04-17 16:32:27.640 WAT [27838] ERROR:  relation "fee_setups" does not exist at character 151
+2026-04-17 16:32:27.640 WAT [27838] STATEMENT:  
+	    WITH fee_data AS (
+	      -- Get total billed amount from fee setups
+	      SELECT 
+	        COALESCE(SUM(fs.amount), 0) AS total_billed
+	      FROM fee_setups fs
+	      JOIN classes cl ON fs.class_id = cl.uuid
+	      WHERE fs.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	        AND fs.term_id = null 
+	        AND cl.level_id = 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41'
+	    ),
+	    payment_data AS (
+	      -- Get payment metrics
+	      SELECT
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'approved'), 0) AS total_paid,
+	        COUNT(*) FILTER (WHERE fp.status = 'pending') AS pending_count,
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'pending' AND NOW() > 
+	          t.end_date), 0) AS overdue_total
+	      FROM fee_payments fp
+	      JOIN enrollments e ON fp.enrollment_id = e.uuid
+	      JOIN classes cl ON e.student_id IN (SELECT student_id FROM enrollments WHERE school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508')
+	      JOIN terms t ON fp.term_id = t.uuid
+	      WHERE e.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	        AND fp.term_id = null 
+	        AND cl.level_id = 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41'
+	        AND e.status = 'active'
+	    )
+	    SELECT
+	      fd.total_billed,
+	      pd.total_paid,
+	      (fd.total_billed - pd.total_paid) AS outstanding_balance,
+	      CASE 
+	        WHEN fd.total_billed = 0 THEN 0
+	        ELSE (pd.total_paid::float / fd.total_billed::float) * 100
+	      END AS collection_rate,
+	      pd.pending_count AS pending_receipts,
+	      pd.overdue_total
+	    FROM fee_data fd, payment_data pd
+	  
+2026-04-17 16:32:27.643 WAT [28059] ERROR:  relation "fee_setups" does not exist at character 493
+2026-04-17 16:32:27.643 WAT [28059] STATEMENT:  
+	    WITH arm_metrics AS (
+	      SELECT
+	        ar.uuid,
+	        ar.name,
+	        COALESCE(SUM(fs.amount), 0) AS total_billed,
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'approved'), 0) AS total_paid,
+	        COALESCE(
+	          SUM(fp.amount) FILTER (WHERE fp.status = 'pending' AND NOW() > t.end_date),
+	          0
+	        ) AS overdue_amount
+	      FROM arms ar
+	      LEFT JOIN enrollments e ON e.arm_id = ar.uuid AND e.term_id = null AND e.status = 'active'
+	      LEFT JOIN fee_setups fs ON fs.class_id = ar.class_id AND fs.term_id = null
+	      LEFT JOIN fee_payments fp ON fp.enrollment_id = e.uuid
+	      LEFT JOIN terms t ON t.uuid = null
+	      WHERE ar.class_id = null
+	        AND e.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508'
+	      GROUP BY ar.uuid, ar.name
+	    )
+	    SELECT
+	      name AS arm_name,
+	      total_billed AS billed,
+	      total_paid AS paid,
+	      (total_billed - total_paid) AS outstanding,
+	      overdue_amount AS overdueAmount,
+	      CASE 
+	        WHEN total_billed = 0 THEN 0
+	        ELSE (total_paid::float / total_billed::float) * 100
+	      END AS collectionRate
+	    FROM arm_metrics
+	    ORDER BY arm_name ASC
+	    LIMIT 50
+	    OFFSET 0
+	  
+2026-04-17 16:37:17.030 WAT [28284] ERROR:  column fp.term_id does not exist at character 981
+2026-04-17 16:37:17.030 WAT [28284] HINT:  Perhaps you meant to reference the column "e.term_id".
+2026-04-17 16:37:17.030 WAT [28284] STATEMENT:  
+	    WITH fee_data AS (
+	      -- Get total billed amount from fee setups
+	      SELECT 
+	        COALESCE(SUM(fs.amount), 0) AS total_billed
+	      FROM fee_setups fs
+	      JOIN classes cl ON fs.class_id = cl.uuid
+	      WHERE fs.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	        AND fs.term_id = null 
+	        AND cl.level_id = 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41'
+	    ),
+	    payment_data AS (
+	      -- Get payment metrics
+	      SELECT
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'approved'), 0) AS total_paid,
+	        COUNT(*) FILTER (WHERE fp.status = 'pending') AS pending_count,
+	        COALESCE(SUM(fp.amount) FILTER (WHERE fp.status = 'pending' AND NOW() > 
+	          t.end_date), 0) AS overdue_total
+	      FROM fee_payments fp
+	      JOIN enrollments e ON fp.enrollment_id = e.uuid
+	      JOIN classes cl ON e.student_id IN (SELECT student_id FROM enrollments WHERE school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508')
+	      JOIN terms t ON fp.term_id = t.uuid
+	      WHERE e.school_id = 'scl-0403b098-4fa4-4077-bb1e-f3932062b508' 
+	        AND fp.term_id = null 
+	        AND cl.level_id = 'cat-4f69627a-42b9-4edb-bd22-b730b2ca3f41'
+	        AND e.status = 'active'
+	    )
+	    SELECT
+	      fd.total_billed,
+	      pd.total_paid,
+	      (fd.total_billed - pd.total_paid) AS outstanding_balance,
+	      CASE 
+	        WHEN fd.total_billed = 0 THEN 0
+	        ELSE (pd.total_paid::float / fd.total_billed::float) * 100
+	      END AS collection_rate,
+	      pd.pending_count AS pending_receipts,
+	      pd.overdue_total
+	    FROM fee_data fd, payment_data pd
+	  
+2026-04-17 16:40:46.156 WAT [28921] ERROR:  column e.class_id does not exist at character 764
+2026-04-17 16:40:46.156 WAT [28921] HINT:  Perhaps you meant to reference the column "fp.class_id".
+2026-04-17 16:40:46.156 WAT [28921] STATEMENT:  ALTER TABLE fee_payments
+	  ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(uuid) ON DELETE SET NULL,
+	  ADD COLUMN IF NOT EXISTS arm_id TEXT REFERENCES arms(uuid) ON DELETE SET NULL,
+	  ADD COLUMN IF NOT EXISTS school_id TEXT REFERENCES schools(uuid) ON DELETE SET NULL,
+	  ADD COLUMN IF NOT EXISTS term_id TEXT REFERENCES terms(uuid) ON DELETE SET NULL,
+	  ADD COLUMN IF NOT EXISTS level_id TEXT REFERENCES categories(uuid) ON DELETE SET NULL;
+	
+	UPDATE fee_payments fp
+	SET
+	  class_id = COALESCE(fp.class_id, e.class_id),
+	  arm_id = COALESCE(fp.arm_id, e.arm_id),
+	  school_id = COALESCE(fp.school_id, e.school_id),
+	  term_id = COALESCE(fp.term_id, e.term_id),
+	  level_id = COALESCE(fp.level_id, c.level_id)
+	FROM enrollments e
+	LEFT JOIN classes c ON c.uuid = e.class_id
+	WHERE fp.enrollment_id = e.uuid;
+	
+	UPDATE fee_payments fp
+	SET level_id = c.level_id
+	FROM classes c
+	WHERE fp.class_id = c.uuid
+	  AND fp.level_id IS NULL;
+	
+	CREATE INDEX IF NOT EXISTS idx_fee_payments_class_id ON fee_payments(class_id);
+	CREATE INDEX IF NOT EXISTS idx_fee_payments_arm_id ON fee_payments(arm_id);
+	CREATE INDEX IF NOT EXISTS idx_fee_payments_school_id ON fee_payments(school_id);
+	CREATE INDEX IF NOT EXISTS idx_fee_payments_term_id ON fee_payments(term_id);
+	CREATE INDEX IF NOT EXISTS idx_fee_payments_level_id ON fee_payments(level_id);

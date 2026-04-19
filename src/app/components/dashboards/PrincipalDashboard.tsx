@@ -8,19 +8,68 @@ import {
 import { 
   CheckCircle, XCircle, TrendingUp, Users, DollarSign, CalendarDays, Activity,
   Download, Filter, AlertTriangle, Bus, Heart, FileText, Clock, Eye, Wallet, Banknote,
-  Trophy, ClipboardCheck, CheckCircle2, UserCheck, UserX, BookOpen, Edit, RefreshCw,
+  Trophy, ClipboardCheck, CheckCircle2, UserCheck, UserX, BookOpen, Edit, RefreshCw, Plus,
   ChevronRight, ChevronDown, Flag, LogOut, School, TabletSmartphone
 } from 'lucide-react';
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { Modal } from '../Modal';
 import { ClassSubjectAnalytics } from '../ClassSubjectAnalytics';
 import {
-  approveFeeItem,
-  type FeeItemCatalog,
-  loadFeeCatalog,
-  rejectFeeItem,
-  subscribeFeeCatalogUpdates,
-} from '../../state/feeCatalogStore';
+  exportClassPerformance,
+  getAtRiskStudents,
+  getAttendanceTrend,
+  getClassAnalytics,
+  getClassPerformance,
+  getClassesList,
+  getClassSubjectSummary,
+  getClassSubjectTrends,
+  getDeepDiveTrend,
+  getGradeDistribution,
+  getMedicationExceptions,
+  getSchoolSummary,
+  getCurrentTermId,
+  getSubjectPerformance,
+  getSubjectsForClass,
+  getTransportDistribution,
+  type AttendancePoint,
+  type AtRiskStudent,
+  type ClassAnalyticsSummary,
+  type ClassInfo,
+  type ClassPerformanceRow,
+  type DeepDivePoint,
+  type GradeDistribution,
+  type MedicationException,
+  type SchoolSummary,
+  type SubjectInfo,
+  type SubjectPerformanceRow,
+  type SubjectSummary,
+  type SubjectTrend,
+  type TransportMode,
+} from '../../../services/analyticsApi';
+import {
+  inviteStaff,
+  listStaff,
+  removeStaff,
+  updateStaffInfo,
+  updateStaffStatus,
+  type StaffLevel,
+  type StaffRole,
+  type StaffStatus,
+  type StaffUser,
+} from '../../../services/staffApi';
+import {
+  getArmMetrics,
+  getArmStudents,
+  getArms,
+  getFeeItemById,
+  getFeeItems,
+  type Arm,
+  type ArmMetrics,
+  type FeeItem,
+  type StudentFeeSummary,
+  updateFeeItemStatus,
+} from '../../../services/feeApi';
+import { useLevelContext } from '../../hooks/useLevelContext';
 
 // ========== TYPES ==========
 type FeePolicy = 'full_access' | 'partial_access' | 'block';
@@ -115,6 +164,45 @@ type PrincipalAtRiskStudent = {
   cumulativeAverage: number;
 };
 
+type PrincipalReadOnlyUser = StaffUser;
+
+type UserFormState = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  role: StaffRole;
+  levelIds: string[];
+};
+
+type PrincipalDataCheck = {
+  id: string;
+  severity: 'warning' | 'critical';
+  category: 'Missing Scores' | 'Attendance' | 'Fees' | 'Assessments';
+  status: 'open' | 'resolved';
+  className: string;
+  owner: string;
+  issue: string;
+  detectedAt: string;
+};
+
+type PrincipalSchoolSetupState = {
+  schoolProfile: {
+    schoolName: string;
+    schoolCode: string;
+    academicSession: string;
+    principalName: string;
+  };
+  termDates: Array<{ name: string; startDate: string; endDate: string; status: 'completed' | 'active' | 'upcoming' }>;
+  classConfiguration: Array<{ className: string; stream: string; capacity: number; enrolled: number }>;
+  subjectOfferings: string[];
+  assessmentConfig: {
+    testWindow: string;
+    examWindow: string;
+    gradingSchema: string;
+  };
+};
+
 // ========== MOCK DATA (extended) ==========
 const pendingSyllabus: SyllabusItem[] = [
   { id: 1, teacher: 'Mrs. Johnson', class: 'Math 10A', subject: 'Mathematics', week: 3, title: 'Quadratic Functions', submittedDate: '2026-04-05', status: 'submitted', content: 'Outline: quadratic equations, factoring, quadratic formula. Objectives: Solve quadratics. Resources: textbook chapter 4.', statusHistory: [{ status: 'submitted', at: '2026-04-05' }] },
@@ -122,34 +210,6 @@ const pendingSyllabus: SyllabusItem[] = [
 ];
 const pendingLessonNotes: LessonNoteItem[] = [
   { id: 1, teacher: 'Mrs. Davis', class: 'English 11A', subject: 'English', title: 'Shakespeare Analysis', submittedDate: '2026-04-05', status: 'submitted', type: 'AI Generated', content: 'Lesson content: Hamlet soliloquy. Activities: group discussion. Assessment: short essay.', statusHistory: [{ status: 'submitted', at: '2026-04-05' }] },
-];
-
-const attendanceTrend = [
-  { week: 'Week 1', present: 92, absent: 5, late: 3 },
-  { week: 'Week 2', present: 88, absent: 7, late: 5 },
-  { week: 'Week 3', present: 94, absent: 3, late: 3 },
-];
-const medicationExceptions = [
-  { student: 'Sarah Johnson', class: 'Grade 5A', medication: 'Ibuprofen', timeDue: '08:00', status: 'missed', reason: 'Parent pickup' },
-  { student: 'Michael Brown', class: 'Grade 5A', medication: 'Vitamin D', timeDue: '09:00', status: 'missed', reason: 'Absent' },
-];
-const transportDistribution = [
-  { mode: 'Self Pickup', count: 120 },
-  { mode: 'Parent Pickup', count: 200 },
-  { mode: 'School Bus', count: 98 },
-  { mode: 'Authorized Person', count: 40 },
-];
-const classPerformance = [
-  { class: 'Math 10A', average: 78, passRate: 85, attendanceRate: 92, rank: 3 },
-  { class: 'Science 9B', average: 82, passRate: 90, attendanceRate: 88, rank: 1 },
-  { class: 'English 11A', average: 75, passRate: 80, attendanceRate: 85, rank: 5 },
-  { class: 'History 10B', average: 80, passRate: 87, attendanceRate: 90, rank: 2 },
-];
-const subjectAverages = [
-  { subject: 'Math', average: 75, passRate: 82, assessments: 4 },
-  { subject: 'Science', average: 78, passRate: 88, assessments: 3 },
-  { subject: 'English', average: 72, passRate: 75, assessments: 5 },
-  { subject: 'History', average: 76, passRate: 80, assessments: 2 },
 ];
 
 // User activity logs (mock)
@@ -193,111 +253,114 @@ const parentEngagementData: ParentEngagementData = {
   ],
 };
 
-const mockDelay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const gradeBuckets = ['A', 'B', 'C', 'D', 'F'] as const;
-
-const getClassSeed = (className: string) =>
-  className.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-
-const buildMockSubjectListForClass = async (className: string) => {
-  await mockDelay(160);
-  const seed = getClassSeed(className);
-  const allSubjects = subjectAverages.map((subject) => subject.subject);
-  const shift = seed % allSubjects.length;
-  return allSubjects.slice(shift).concat(allSubjects.slice(0, shift));
+const principalSchoolSetupSnapshot = {
+  schoolProfile: {
+    schoolName: 'SMFA College',
+    schoolCode: 'SMFA-001',
+    academicSession: '2025/2026',
+    principalName: 'Mr. Brown',
+  },
+  termDates: [
+    { name: 'Term 1', startDate: '2026-01-15', endDate: '2026-04-10', status: 'completed' },
+    { name: 'Term 2', startDate: '2026-04-20', endDate: '2026-07-15', status: 'active' },
+    { name: 'Term 3', startDate: '2026-08-01', endDate: '2026-11-20', status: 'upcoming' },
+  ],
+  classConfiguration: [
+    { className: 'Grade 5A', stream: 'Junior', capacity: 40, enrolled: 35 },
+    { className: 'Grade 5B', stream: 'Junior', capacity: 40, enrolled: 32 },
+    { className: 'Grade 6A', stream: 'Junior', capacity: 42, enrolled: 38 },
+    { className: 'Grade 6B', stream: 'Junior', capacity: 42, enrolled: 36 },
+  ],
+  subjectOfferings: [
+    'Mathematics',
+    'English',
+    'Science',
+    'History',
+    'Computer Studies',
+  ],
+  assessmentConfig: {
+    testWindow: 'Week 7',
+    examWindow: 'Week 12',
+    gradingSchema: '40% Continuous Assessment, 60% Exam',
+  },
 };
 
-const buildMockSubjectPerformanceForClass = async (className: string) => {
-  await mockDelay(200);
-  const seed = getClassSeed(className);
-  return subjectAverages.map((item, index) => {
-    const offset = ((seed + index * 3) % 7) - 3;
-    const average = Math.max(40, Math.min(98, item.average + offset));
-    const passRate = Math.max(50, Math.min(99, item.passRate + offset));
-    return {
-      subject: item.subject,
-      average,
-      passRate,
-    };
-  });
-};
+const principalReadOnlyUsers: PrincipalReadOnlyUser[] = [
+  {
+    id: 'usr-001',
+    firstName: 'Mary',
+    lastName: 'Johnson',
+    role: 'teacher',
+    status: 'active',
+    email: 'johnson@smfa.edu',
+    phoneNumber: '',
+    levelIds: ['cat-jss'],
+    levels: [{ id: 'cat-jss', name: 'Junior Secondary' }],
+  },
+  {
+    id: 'usr-002',
+    firstName: 'Kemi',
+    lastName: 'Lee',
+    role: 'bursar',
+    status: 'inactive',
+    email: 'lee@smfa.edu',
+    phoneNumber: '',
+    levelIds: ['cat-jss', 'cat-sss'],
+    levels: [
+      { id: 'cat-jss', name: 'Junior Secondary' },
+      { id: 'cat-sss', name: 'Senior Secondary' },
+    ],
+  },
+];
 
-const buildMockGradeDistribution = async (className: string) => {
-  await mockDelay(150);
-  const seed = getClassSeed(className);
-  return gradeBuckets.map((grade, index) => ({
-    grade,
-    count: Math.max(2, ((seed + (index + 2) * 11) % 15) + (index === 2 ? 6 : 0)),
-  }));
-};
-
-const buildMockAtRiskStudents = async (className: string, subjectId: string | null = null) => {
-  await mockDelay(170);
-  const classSeed = getClassSeed(className);
-  const subjectSeed = subjectId
-    ? subjectId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0)
-    : 0;
-
-  const base = [
-    { id: `${className}-sarah`, name: 'Sarah Johnson', baseline: 38 },
-    { id: `${className}-michael`, name: 'Michael Brown', baseline: 35 },
-    { id: `${className}-amad`, name: 'Amad Bello', baseline: 41 },
-    { id: `${className}-chisom`, name: 'Chisom Okoye', baseline: 37 },
-  ];
-
-  return base
-    .map((student, index) => {
-      const adjustment = ((classSeed + subjectSeed + index * 5) % 7) - 3;
-      const cumulativeAverage = Math.max(0, Math.min(100, student.baseline + adjustment));
-      return {
-        id: student.id,
-        name: student.name,
-        cumulativeAverage,
-      };
-    })
-    .filter((student) => student.cumulativeAverage < 40);
-};
-
-const buildMockSubjectKpis = async (subjectId: string, subjectList: PrincipalSubjectPerformance[]) => {
-  await mockDelay(180);
-  const selected = subjectList.find((entry) => entry.subject === subjectId);
-  const average = selected?.average ?? 0;
-  const spread = 9;
-  return {
-    subjectAverage: average,
-    highestScore: Math.min(100, average + spread),
-    lowestScore: Math.max(0, average - spread),
-    teacherComplianceRate: Math.max(0, Math.min(100, average + 8)),
-  };
-};
-
-const buildMockSubjectTrend = async (subjectId: string, average: number) => {
-  await mockDelay(140);
-  const seed = subjectId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const offsets = [-4, 1, 3];
-
-  return offsets.map((offset, index) => {
-    const adjustedAverage = Math.max(0, Math.min(100, average + offset + ((seed + index) % 3)));
-    return {
-      termLabel: `Term ${index + 1}`,
-      average: adjustedAverage,
-      passRate: Math.max(0, Math.min(100, adjustedAverage + 6)),
-    };
-  });
-};
-
-const buildMockDeepDiveTrend = async (subjectId: string, average: number) => {
-  await mockDelay(140);
-  const seed = subjectId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return Array.from({ length: 6 }).map((_, index) => ({
-    week: `W${index + 1}`,
-    average: Math.max(0, Math.min(100, average + ((seed + index * 3) % 6) - 3)),
-  }));
-};
+const principalDataChecksSeed: PrincipalDataCheck[] = [
+  {
+    id: 'dc-001',
+    severity: 'critical',
+    category: 'Missing Scores',
+    status: 'open',
+    className: 'Grade 5A',
+    owner: 'Mrs. Johnson',
+    issue: 'Mathematics CA2 scores missing for 4 students.',
+    detectedAt: '2026-04-09T09:10:00Z',
+  },
+  {
+    id: 'dc-002',
+    severity: 'warning',
+    category: 'Attendance',
+    status: 'open',
+    className: 'Grade 6B',
+    owner: 'Class Teacher',
+    issue: 'Attendance not marked for 2 school days.',
+    detectedAt: '2026-04-08T13:20:00Z',
+  },
+  {
+    id: 'dc-003',
+    severity: 'warning',
+    category: 'Fees',
+    status: 'open',
+    className: 'Grade 6A',
+    owner: 'Bursar',
+    issue: 'Outstanding balance anomaly detected for 3 households.',
+    detectedAt: '2026-04-08T11:00:00Z',
+  },
+  {
+    id: 'dc-004',
+    severity: 'critical',
+    category: 'Assessments',
+    status: 'open',
+    className: 'Grade 5B',
+    owner: 'Mr. Thompson',
+    issue: 'Unified test timetable not aligned with approved window.',
+    detectedAt: '2026-04-07T16:44:00Z',
+  },
+];
 
 // ========== HELPER FUNCTIONS ==========
-const formatCurrency = (amount: number) => `₦${amount.toLocaleString()}`;
+const formatCurrency = (amount?: number | null) => {
+  if (amount == null) return '₦0';
+  return '₦' + amount.toLocaleString();
+};
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
 const formatDateTime = (iso: string) => new Date(iso).toLocaleString();
 
@@ -323,7 +386,17 @@ if (typeof window !== 'undefined' && !localStorage.getItem('principal-audit-logs
 
 // ========== MAIN COMPONENT ==========
 export function PrincipalDashboard() {
-  const [activeMainTab, setActiveMainTab] = useState<'fee' | 'kpi' | 'approvals' | 'resultApproval' | 'parentEngagement'>('fee');
+  const [activeMainTab, setActiveMainTab] = useState<
+    'fee' |
+    'kpi' |
+    'approvals' |
+    'resultApproval' |
+    'parentEngagement' |
+    'schoolSetup' |
+    'userManagement' |
+    'auditLogs' |
+    'dataChecks'
+  >('fee');
   
   // Block 3 state
   const [approvalTab, setApprovalTab] = useState<'syllabus' | 'lessonNotes'>('syllabus');
@@ -355,7 +428,18 @@ export function PrincipalDashboard() {
 
   const [selectedClassForPrincipal, setSelectedClassForPrincipal] = useState<{ id: string; className: string } | null>(null);
   const [selectedSubjectForPrincipal, setSelectedSubjectForPrincipal] = useState<string | null>(null);
-  const [subjectsForSelectedClass, setSubjectsForSelectedClass] = useState<string[]>([]);
+  const [subjectsForSelectedClass, setSubjectsForSelectedClass] = useState<SubjectInfo[]>([]);
+  const [schoolSummary, setSchoolSummary] = useState<SchoolSummary | null>(null);
+  const [kpiClassPerformanceRows, setKpiClassPerformanceRows] = useState<ClassPerformanceRow[]>([]);
+  const [kpiSubjectPerformanceRows, setKpiSubjectPerformanceRows] = useState<SubjectPerformanceRow[]>([]);
+  const [kpiAttendanceTrend, setKpiAttendanceTrend] = useState<AttendancePoint[]>([]);
+  const [kpiMedicationExceptions, setKpiMedicationExceptions] = useState<MedicationException[]>([]);
+  const [kpiTransportDistribution, setKpiTransportDistribution] = useState<TransportMode[]>([]);
+  const [kpiClasses, setKpiClasses] = useState<ClassInfo[]>([]);
+  const [isLoadingKpiData, setIsLoadingKpiData] = useState(false);
+  const [kpiDataError, setKpiDataError] = useState<string | null>(null);
+  const [isExportingClassPerformance, setIsExportingClassPerformance] = useState(false);
+  const [selectedClassAnalytics, setSelectedClassAnalytics] = useState<ClassAnalyticsSummary | null>(null);
   const [principalSubjectKpis, setPrincipalSubjectKpis] = useState<PrincipalSubjectKpi | null>(null);
   const [principalSubjectTrend, setPrincipalSubjectTrend] = useState<Array<{ termLabel: string; average: number; passRate: number }>>([]);
   const [principalSubjectPerformanceList, setPrincipalSubjectPerformanceList] = useState<PrincipalSubjectPerformance[]>([]);
@@ -368,87 +452,426 @@ export function PrincipalDashboard() {
   // Block 7 state (no extra)
   
   // Fee oversight state (existing)
-  const [selectedFeeTerm, setSelectedFeeTerm] = useState('');
+  const { levelId } = useLevelContext();
+  const [selectedFeeTerm, setSelectedFeeTerm] = useState('Term 3, 2026');
   const [selectedFinanceClass, setSelectedFinanceClass] = useState<string | null>(null);
-  const [feeCatalog, setFeeCatalog] = useState<FeeItemCatalog[]>(() => loadFeeCatalog());
+  const [selectedArmFilterId, setSelectedArmFilterId] = useState('');
+  const [feeItems, setFeeItems] = useState<FeeItem[]>([]);
+  const [arms, setArms] = useState<Arm[]>([]);
+  const [armMetricsById, setArmMetricsById] = useState<Record<string, ArmMetrics>>({});
+  const [armStudentsById, setArmStudentsById] = useState<Record<string, StudentFeeSummary[]>>({});
+  const [isLoadingFeeData, setIsLoadingFeeData] = useState(false);
+  const [feeDataError, setFeeDataError] = useState<string | null>(null);
+  const [activeFeeActionId, setActiveFeeActionId] = useState<number | null>(null);
   const [selectedFeeItemDetailId, setSelectedFeeItemDetailId] = useState<number | null>(null);
   const [feeFilter, setFeeFilter] = useState<'all' | 'pending_approval' | 'approved' | 'rejected'>('all');
+  const [principalUserRoleFilter, setPrincipalUserRoleFilter] = useState<'all' | StaffRole>('all');
+  const [principalUserStatusFilter, setPrincipalUserStatusFilter] = useState<'all' | StaffStatus>('all');
+  const [userManagementError, setUserManagementError] = useState<string | null>(null);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [availableLevels, setAvailableLevels] = useState<StaffLevel[]>([]);
+  const [principalDataCheckSeverity, setPrincipalDataCheckSeverity] = useState<'all' | PrincipalDataCheck['severity']>('all');
+  const [schoolSetupState, setSchoolSetupState] = useState<PrincipalSchoolSetupState>(() => {
+    if (typeof window === 'undefined') return principalSchoolSetupSnapshot;
+    const stored = localStorage.getItem('principal-school-setup-state');
+    if (!stored) return principalSchoolSetupSnapshot;
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return principalSchoolSetupSnapshot;
+    }
+  });
+  const [principalUsers, setPrincipalUsers] = useState<PrincipalReadOnlyUser[]>(principalReadOnlyUsers);
+  const [principalDataChecks, setPrincipalDataChecks] = useState<PrincipalDataCheck[]>(() => {
+    if (typeof window === 'undefined') return principalDataChecksSeed;
+    const stored = localStorage.getItem('principal-data-checks-state');
+    if (!stored) return principalDataChecksSeed;
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return principalDataChecksSeed;
+    }
+  });
+  const [subjectDraft, setSubjectDraft] = useState('');
+  const [newTermDraft, setNewTermDraft] = useState({ name: '', startDate: '', endDate: '', status: 'upcoming' as 'completed' | 'active' | 'upcoming' });
+  const [newClassDraft, setNewClassDraft] = useState({ className: '', stream: 'Junior', capacity: 0, enrolled: 0 });
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [userForm, setUserForm] = useState<UserFormState>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phoneNumber: '',
+    role: 'teacher',
+    levelIds: [],
+  });
+  const [isDataCheckModalOpen, setIsDataCheckModalOpen] = useState(false);
+  const [editingDataCheckId, setEditingDataCheckId] = useState<string | null>(null);
+  const [dataCheckForm, setDataCheckForm] = useState<Omit<PrincipalDataCheck, 'id' | 'detectedAt'>>({
+    severity: 'warning',
+    category: 'Missing Scores',
+    status: 'open',
+    className: '',
+    owner: '',
+    issue: '',
+  });
   
   // Refs for scrolling
   const approvalsSectionRef = useRef<HTMLDivElement | null>(null);
   const attendanceSectionRef = useRef<HTMLDivElement | null>(null);
   const performanceSectionRef = useRef<HTMLDivElement | null>(null);
-  
-  // Mock fee data (same as before, simplified for brevity)
-  const feeClassRows = [
-    { className: 'Grade 5A', billed: 150000, paid: 95000, outstanding: 55000, overdueAmount: 20000, collectionRate: 63.3 },
-    { className: 'Grade 5B', billed: 140000, paid: 120000, outstanding: 20000, overdueAmount: 0, collectionRate: 85.7 },
-  ];
 
   useEffect(() => {
-    const unsubscribe = subscribeFeeCatalogUpdates(() => {
-      setFeeCatalog(loadFeeCatalog());
-    });
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('principal-school-setup-state', JSON.stringify(schoolSetupState));
+    }
+  }, [schoolSetupState]);
 
-    return unsubscribe;
-  }, []);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('principal-data-checks-state', JSON.stringify(principalDataChecks));
+    }
+  }, [principalDataChecks]);
 
-  const pendingFeeItems = useMemo(
-    () => feeCatalog.filter((item) => item.isActive && item.status === 'pending_approval'),
-    [feeCatalog],
-  );
+  useEffect(() => {
+    let isMounted = true;
 
-  const approvedFeeItems = useMemo(
-    () => feeCatalog.filter((item) => item.isActive && item.status === 'approved'),
-    [feeCatalog],
-  );
+    const getFallbackLevelsFromSelection = (): StaffLevel[] => {
+      if (typeof window === 'undefined') return [];
+      const raw = localStorage.getItem('selected-school-assignment');
+      if (!raw) return [];
 
-  const feeExecutiveKpi = useMemo(() => {
-    const totalBilled = approvedFeeItems.reduce((sum, item) => sum + item.amount, 0);
-    const totalPaid = Math.round(totalBilled * 0.741);
-    const outstandingBalance = Math.max(0, totalBilled - totalPaid);
-    const collectionRate = totalBilled > 0 ? Math.round((totalPaid / totalBilled) * 1000) / 10 : 0;
-    const overdueTotal = Math.round(outstandingBalance * 0.3);
-
-    return {
-      totalBilled,
-      totalPaid,
-      outstandingBalance,
-      collectionRate,
-      pendingReceipts: pendingFeeItems.length,
-      overdueTotal,
+      try {
+        const parsed = JSON.parse(raw) as { categories?: Array<{ uuid?: string; name?: string }> };
+        const categories = Array.isArray(parsed.categories) ? parsed.categories : [];
+        return categories
+          .map((category) => ({
+            id: String(category.uuid || ''),
+            name: String(category.name || category.uuid || ''),
+          }))
+          .filter((level) => Boolean(level.id));
+      } catch {
+        return [];
+      }
     };
-  }, [approvedFeeItems, pendingFeeItems.length]);
 
-  const approvePendingFeeItem = (feeItemId: number) => {
-    const next = approveFeeItem(feeItemId);
-    setFeeCatalog(next);
+    const loadUserManagementData = async () => {
+      const fallbackLevels = getFallbackLevelsFromSelection();
+
+      if (!levelId) {
+        if (!isMounted) return;
+        setAvailableLevels(fallbackLevels);
+        setPrincipalUsers([]);
+        return;
+      }
+
+      setIsLoadingUsers(true);
+      setUserManagementError(null);
+
+      try {
+        const users = await listStaff(levelId);
+
+        if (!isMounted) return;
+
+        setPrincipalUsers(users);
+        setAvailableLevels(fallbackLevels);
+      } catch (error) {
+        if (!isMounted) return;
+        const message = error instanceof Error ? error.message : 'Unable to load staff users.';
+        setUserManagementError(message);
+      } finally {
+        if (isMounted) {
+          setIsLoadingUsers(false);
+        }
+      }
+    };
+
+    loadUserManagementData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [levelId]);
+
+  const feeClassRows = useMemo(
+    () =>
+      arms.map((arm) => {
+        const metrics = armMetricsById[arm.id];
+        return {
+          armId: arm.id,
+          className: arm.name,
+          billed: metrics?.billed ?? 0,
+          paid: metrics?.paid ?? 0,
+          outstanding: metrics?.outstanding ?? 0,
+          overdueAmount: Math.max(0, (metrics?.outstanding ?? 0) * 0.3),
+          collectionRate: metrics?.collectionRate ?? 0,
+          average: metrics?.averageScore ?? 0,
+          passRate: metrics?.passRate ?? 0,
+          attendanceRate: metrics?.attendanceRate ?? 0,
+          rank: metrics?.rank ?? 0,
+        };
+      }),
+    [arms, armMetricsById],
+  );
+
+  const selectedSubjectLabelForPrincipal = useMemo(() => {
+    if (!selectedSubjectForPrincipal) return null;
+    const match = subjectsForSelectedClass.find((subj) => subj.subjectName === selectedSubjectForPrincipal);
+    return match?.subjectName || selectedSubjectForPrincipal;
+  }, [selectedSubjectForPrincipal, subjectsForSelectedClass]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysAgo = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const loadKpiData = async () => {
+      if (!levelId) {
+        setSchoolSummary(null);
+        setKpiClassPerformanceRows([]);
+        setKpiSubjectPerformanceRows([]);
+        setKpiAttendanceTrend([]);
+        setKpiMedicationExceptions([]);
+        setKpiTransportDistribution([]);
+        setKpiClasses([]);
+        setSelectedClassForPrincipal(null);
+        setSelectedSubjectForPrincipal(null);
+        setKpiDataError('No level selected. Please choose a category first.');
+        return;
+      }
+
+      setIsLoadingKpiData(true);
+      setKpiDataError(null);
+
+      try {
+        const currentTermId = getCurrentTermId();
+        const attendanceClassId = selectedClassForPrincipal?.id || undefined;
+        const transportClassId = selectedClassForPrincipal?.id || undefined;
+        const [
+          summary,
+          classPerformance,
+          subjectPerformance,
+          attendanceTrend,
+          medicationRows,
+          transportRows,
+          classList,
+        ] = await Promise.all([
+          getSchoolSummary(levelId),
+          getClassPerformance(levelId),
+          getSubjectPerformance(levelId),
+          getAttendanceTrend(levelId, {
+            granularity: 'week',
+            fromDate: thirtyDaysAgo,
+            toDate: today,
+            classId: attendanceClassId,
+          }),
+          getMedicationExceptions(levelId, { date: today }),
+          getTransportDistribution(levelId, currentTermId ? { termId: currentTermId, classId: transportClassId } : { date: today, classId: transportClassId }),
+          getClassesList(levelId),
+        ]);
+
+        if (!isMounted) return;
+
+        setSchoolSummary(summary);
+        setKpiClassPerformanceRows(classPerformance);
+        setKpiSubjectPerformanceRows(subjectPerformance);
+        setKpiAttendanceTrend(attendanceTrend);
+        setKpiMedicationExceptions(medicationRows);
+        setKpiTransportDistribution(transportRows);
+        setKpiClasses(classList);
+      } catch (error) {
+        if (!isMounted) return;
+        const message = error instanceof Error ? error.message : 'Unable to load school KPI data.';
+        setKpiDataError(message);
+      } finally {
+        if (isMounted) {
+          setIsLoadingKpiData(false);
+        }
+      }
+    };
+
+    loadKpiData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [levelId, selectedClassForPrincipal?.id]);
+
+  const loadFeeAndArmData = async () => {
+    if (!levelId) {
+      setFeeDataError('No level selected. Please choose a category first.');
+      return;
+    }
+
+    setIsLoadingFeeData(true);
+    setFeeDataError(null);
+
+    try {
+      const [fetchedFeeItems, fetchedArms] = await Promise.all([
+        getFeeItems(levelId, {
+          term: selectedFeeTerm || undefined,
+          armId: selectedArmFilterId || undefined,
+        }),
+        getArms(),
+      ]);
+
+      setFeeItems(fetchedFeeItems);
+      setArms(fetchedArms);
+
+      const metricsEntries = await Promise.all(
+        fetchedArms.map(async (arm) => {
+          try {
+            const armMetrics = await getArmMetrics(arm.id);
+            return [arm.id, armMetrics] as const;
+          } catch {
+            return [arm.id, {
+              armId: arm.id,
+              armName: arm.name,
+            } as ArmMetrics] as const;
+          }
+        }),
+      );
+
+      setArmMetricsById(Object.fromEntries(metricsEntries));
+
+      const studentsEntries = await Promise.all(
+        fetchedArms.map(async (arm) => {
+          try {
+            const students = await getArmStudents(arm.id);
+            return [arm.id, students] as const;
+          } catch {
+            return [arm.id, [] as StudentFeeSummary[]] as const;
+          }
+        }),
+      );
+
+      setArmStudentsById(Object.fromEntries(studentsEntries));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to fetch fee dashboard data.';
+      setFeeDataError(message);
+    } finally {
+      setIsLoadingFeeData(false);
+    }
   };
 
-  const rejectPendingFeeItem = (feeItemId: number) => {
+  useEffect(() => {
+    loadFeeAndArmData();
+  }, [levelId, selectedFeeTerm, selectedArmFilterId]);
+
+  const approvePendingFeeItem = async (feeItemId: number) => {
+    if (!levelId) return;
+
+    setActiveFeeActionId(feeItemId);
+    try {
+      await updateFeeItemStatus(levelId, feeItemId, 'approved');
+      await loadFeeAndArmData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to approve fee item.';
+      setFeeDataError(message);
+    } finally {
+      setActiveFeeActionId(null);
+    }
+  };
+
+  const rejectPendingFeeItem = async (feeItemId: number) => {
+    if (!levelId) return;
+
     const reason = window.prompt('Provide rejection reason:');
     if (reason === null) return;
 
-    const next = rejectFeeItem(feeItemId, reason);
-    setFeeCatalog(next);
+    setActiveFeeActionId(feeItemId);
+    try {
+      await updateFeeItemStatus(levelId, feeItemId, 'rejected', reason);
+      await loadFeeAndArmData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to reject fee item.';
+      setFeeDataError(message);
+    } finally {
+      setActiveFeeActionId(null);
+    }
   };
 
   const viewFeeItemDetails = (feeItemId: number) => {
     setSelectedFeeItemDetailId(feeItemId);
   };
 
+  useEffect(() => {
+    const loadFeeDetails = async () => {
+      if (!levelId || !selectedFeeItemDetailId) return;
+      try {
+        const details = await getFeeItemById(levelId, selectedFeeItemDetailId);
+        setFeeItems((prev) => {
+          const next = prev.filter((item) => item.id !== details.id);
+          return [details, ...next];
+        });
+      } catch {
+        // Keep existing table item data if the details endpoint fails.
+      }
+    };
+
+    loadFeeDetails();
+  }, [levelId, selectedFeeItemDetailId]);
+
   const selectedFeeItemDetail = useMemo(
-    () => feeCatalog.find((item) => item.id === selectedFeeItemDetailId) || null,
-    [feeCatalog, selectedFeeItemDetailId],
+    () => feeItems.find((item) => item.id === selectedFeeItemDetailId) || null,
+    [feeItems, selectedFeeItemDetailId],
   );
+
+  const approvedFeeItems = useMemo(
+    () => (feeItems ?? []).filter((item) => (item.isActive ?? true) && item.status === 'approved'),
+    [feeItems],
+  );
+
+  const pendingFeeItems = useMemo(
+    () => (feeItems ?? []).filter((item) => (item.isActive ?? true) && item.status === 'pending_approval'),
+    [feeItems],
+  );
+
+  const feeExecutiveKpi = useMemo(() => {
+    const approved = approvedFeeItems ?? [];
+    const totalBilled = approved.reduce((sum, item) => sum + (item.amount ?? 0), 0);
+    const totalPaid = Math.round(totalBilled * 0.741);
+    const outstandingBalance = Math.max(0, totalBilled - totalPaid);
+    const collectionRate = totalBilled > 0 ? Math.round((totalPaid / totalBilled) * 1000) / 10 : 0;
+
+    return {
+      totalBilled,
+      totalPaid,
+      outstandingBalance,
+      collectionRate,
+      pendingReceipts: (pendingFeeItems ?? []).length,
+      overdueTotal: Math.round(outstandingBalance * 0.3),
+    };
+  }, [approvedFeeItems, pendingFeeItems]);
 
   const filteredFeeItems = useMemo(
     () =>
-      feeCatalog.filter((item) => {
+      feeItems.filter((item) => {
         if (feeFilter === 'all') return true;
         return item.status === feeFilter;
       }),
-    [feeCatalog, feeFilter],
+    [feeItems, feeFilter],
+  );
+
+  const filteredPrincipalUsers = useMemo(
+    () =>
+      principalUsers.filter((user) => {
+        const roleMatch = principalUserRoleFilter === 'all' || user.role === principalUserRoleFilter;
+        const statusMatch = principalUserStatusFilter === 'all' || user.status === principalUserStatusFilter;
+        return roleMatch && statusMatch;
+      }),
+    [principalUsers, principalUserRoleFilter, principalUserStatusFilter],
+  );
+
+  const filteredPrincipalDataChecks = useMemo(
+    () =>
+      principalDataChecks.filter((item) => {
+        if (principalDataCheckSeverity === 'all') return true;
+        return item.severity === principalDataCheckSeverity;
+      }),
+    [principalDataChecks, principalDataCheckSeverity],
   );
 
   const getStatusBadgeVariant = (status: string) => {
@@ -464,12 +887,234 @@ export function PrincipalDashboard() {
     }
   };
 
+  const getPrincipalUserStatusBadgeVariant = (status: PrincipalReadOnlyUser['status']) => {
+    switch (status) {
+      case 'active':
+        return 'approved';
+      case 'inactive':
+        return 'rejected';
+      case 'suspended':
+      case 'deleted':
+        return 'pending';
+      default:
+        return 'default';
+    }
+  };
+
+  const getDataCheckSeverityBadgeVariant = (severity: PrincipalDataCheck['severity']) => {
+    switch (severity) {
+      case 'critical':
+        return 'rejected';
+      case 'warning':
+        return 'pending';
+      default:
+        return 'default';
+    }
+  };
+
+  const openAddUserModal = () => {
+    setEditingUserId(null);
+    setUserForm({ firstName: '', lastName: '', email: '', phoneNumber: '', role: 'teacher', levelIds: [] });
+    setUserManagementError(null);
+    setIsUserModalOpen(true);
+  };
+
+  const openEditUserModal = (user: PrincipalReadOnlyUser) => {
+    setEditingUserId(user.id);
+    setUserForm({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      phoneNumber: user.phoneNumber || '',
+      role: user.role,
+      levelIds: user.levelIds || [],
+    });
+    setUserManagementError(null);
+    setIsUserModalOpen(true);
+  };
+
+  const saveUser = async () => {
+    if (!userForm.firstName.trim() || !userForm.lastName.trim() || !userForm.email.trim()) {
+      setUserManagementError('First name, last name, and email are required.');
+      return;
+    }
+    if (userForm.levelIds.length === 0) {
+      setUserManagementError('Select at least one level.');
+      return;
+    }
+
+    setIsSavingUser(true);
+    setUserManagementError(null);
+
+    try {
+      if (!levelId) {
+        throw new Error('No level selected. Please choose a category first.');
+      }
+
+      if (editingUserId) {
+        const updated = await updateStaffInfo(editingUserId, {
+          email: userForm.email,
+          firstName: userForm.firstName,
+          lastName: userForm.lastName,
+          phoneNumber: userForm.phoneNumber || undefined,
+          levelIds: userForm.levelIds,
+        });
+
+        setPrincipalUsers((prev) => prev.map((user) => (user.id === editingUserId ? updated : user)));
+      } else {
+        const invited = await inviteStaff(levelId, {
+          email: userForm.email,
+          firstName: userForm.firstName,
+          lastName: userForm.lastName,
+          phoneNumber: userForm.phoneNumber || undefined,
+          role: userForm.role,
+          levelIds: userForm.levelIds,
+        });
+
+        setPrincipalUsers((prev) => [invited, ...prev]);
+      }
+
+      setIsUserModalOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save user.';
+      setUserManagementError(message);
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  const deleteUser = async (userId: string) => {
+    if (!confirm('Delete this user?')) return;
+    try {
+      await removeStaff(userId);
+      setPrincipalUsers((prev) => prev.filter((user) => user.id !== userId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to delete user.';
+      setUserManagementError(message);
+    }
+  };
+
+  const handleUserStatusChange = async (userId: string, nextStatus: StaffStatus) => {
+    try {
+      const updated = await updateStaffStatus(userId, nextStatus);
+      setPrincipalUsers((prev) => prev.map((user) => (user.id === userId ? updated : user)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update status.';
+      setUserManagementError(message);
+    }
+  };
+
+  const addTerm = () => {
+    if (!newTermDraft.name || !newTermDraft.startDate || !newTermDraft.endDate) {
+      alert('Term name, start date, and end date are required.');
+      return;
+    }
+    setSchoolSetupState((prev) => ({ ...prev, termDates: [...prev.termDates, newTermDraft] }));
+    setNewTermDraft({ name: '', startDate: '', endDate: '', status: 'upcoming' });
+  };
+
+  const removeTerm = (termName: string) => {
+    setSchoolSetupState((prev) => ({ ...prev, termDates: prev.termDates.filter((term) => term.name !== termName) }));
+  };
+
+  const addClassConfig = () => {
+    if (!newClassDraft.className.trim()) {
+      alert('Class name is required.');
+      return;
+    }
+    setSchoolSetupState((prev) => ({
+      ...prev,
+      classConfiguration: [...prev.classConfiguration, newClassDraft],
+    }));
+    setNewClassDraft({ className: '', stream: 'Junior', capacity: 0, enrolled: 0 });
+  };
+
+  const removeClassConfig = (className: string) => {
+    setSchoolSetupState((prev) => ({
+      ...prev,
+      classConfiguration: prev.classConfiguration.filter((item) => item.className !== className),
+    }));
+  };
+
+  const addSubject = () => {
+    const next = subjectDraft.trim();
+    if (!next) return;
+    setSchoolSetupState((prev) => ({ ...prev, subjectOfferings: [...prev.subjectOfferings, next] }));
+    setSubjectDraft('');
+  };
+
+  const removeSubject = (subject: string) => {
+    setSchoolSetupState((prev) => ({
+      ...prev,
+      subjectOfferings: prev.subjectOfferings.filter((item) => item !== subject),
+    }));
+  };
+
+  const openAddDataCheckModal = () => {
+    setEditingDataCheckId(null);
+    setDataCheckForm({
+      severity: 'warning',
+      category: 'Missing Scores',
+      status: 'open',
+      className: '',
+      owner: '',
+      issue: '',
+    });
+    setIsDataCheckModalOpen(true);
+  };
+
+  const openEditDataCheckModal = (check: PrincipalDataCheck) => {
+    setEditingDataCheckId(check.id);
+    setDataCheckForm({
+      severity: check.severity,
+      category: check.category,
+      status: check.status,
+      className: check.className,
+      owner: check.owner,
+      issue: check.issue,
+    });
+    setIsDataCheckModalOpen(true);
+  };
+
+  const saveDataCheck = () => {
+    if (!dataCheckForm.issue.trim() || !dataCheckForm.className.trim()) {
+      alert('Issue and class are required.');
+      return;
+    }
+
+    if (editingDataCheckId) {
+      setPrincipalDataChecks((prev) => prev.map((check) => (check.id === editingDataCheckId ? { ...check, ...dataCheckForm } : check)));
+    } else {
+      setPrincipalDataChecks((prev) => [
+        {
+          id: `dc-${Date.now()}`,
+          detectedAt: new Date().toISOString(),
+          ...dataCheckForm,
+        },
+        ...prev,
+      ]);
+    }
+    setIsDataCheckModalOpen(false);
+  };
+
+  const resolveDataCheck = (id: string) => {
+    setPrincipalDataChecks((prev) =>
+      prev.map((check) => (check.id === id ? { ...check, status: check.status === 'resolved' ? 'open' : 'resolved' } : check)),
+    );
+  };
+
+  const deleteDataCheck = (id: string) => {
+    if (!confirm('Delete this data check?')) return;
+    setPrincipalDataChecks((prev) => prev.filter((check) => check.id !== id));
+  };
+
   useEffect(() => {
     let isMounted = true;
 
     const loadPrincipalAnalytics = async () => {
       if (!selectedClassForPrincipal) {
         setSubjectsForSelectedClass([]);
+        setSelectedClassAnalytics(null);
         setPrincipalSubjectPerformanceList([]);
         setPrincipalGradeDist([]);
         setPrincipalAtRisk([]);
@@ -484,48 +1129,62 @@ export function PrincipalDashboard() {
       setPrincipalAnalyticsError(null);
 
       try {
-        const [subjects, subjectPerformance, gradeDist, classWideAtRisk] = await Promise.all([
-          buildMockSubjectListForClass(selectedClassForPrincipal.className),
-          buildMockSubjectPerformanceForClass(selectedClassForPrincipal.className),
-          buildMockGradeDistribution(selectedClassForPrincipal.className),
-          buildMockAtRiskStudents(selectedClassForPrincipal.className),
+        const classId = selectedClassForPrincipal.id;
+        const [classAnalytics, subjects, classWideAtRisk, deepDiveTrend, gradeDist] = await Promise.all([
+          getClassAnalytics(classId),
+          getSubjectsForClass(classId),
+          getAtRiskStudents(classId),
+          getDeepDiveTrend(classId),
+          getGradeDistribution(classId),
         ]);
 
         if (!isMounted) return;
 
+        setSelectedClassAnalytics(classAnalytics);
         setSubjectsForSelectedClass(subjects);
-        setPrincipalSubjectPerformanceList(subjectPerformance);
+        setPrincipalSubjectPerformanceList(
+          subjects.map((subject) => {
+            const matchingPerformance = kpiSubjectPerformanceRows.find((row) => row.subject === subject.subjectName);
+            return {
+              subject: subject.subjectName,
+              average: matchingPerformance?.average ?? 0,
+              passRate: matchingPerformance?.passRate ?? 0,
+            };
+          }),
+        );
         setPrincipalGradeDist(gradeDist);
+        setPrincipalDeepDiveTrend(deepDiveTrend);
+        setPrincipalAtRisk(classWideAtRisk);
 
         if (selectedSubjectForPrincipal) {
-          const [subjectKpis, subjectTrend, deepDiveTrend, subjectAtRisk] = await Promise.all([
-            buildMockSubjectKpis(selectedSubjectForPrincipal, subjectPerformance),
-            buildMockSubjectTrend(
-              selectedSubjectForPrincipal,
-              subjectPerformance.find((entry) => entry.subject === selectedSubjectForPrincipal)?.average ?? 0,
-            ),
-            buildMockDeepDiveTrend(
-              selectedSubjectForPrincipal,
-              subjectPerformance.find((entry) => entry.subject === selectedSubjectForPrincipal)?.average ?? 0,
-            ),
-            buildMockAtRiskStudents(selectedClassForPrincipal.className, selectedSubjectForPrincipal),
+          const selectedSubject = subjects.find((subject) => subject.subjectName === selectedSubjectForPrincipal);
+          if (!selectedSubject) {
+            throw new Error('Selected subject no longer exists for this class.');
+          }
+
+          const [subjectSummary, subjectTrend] = await Promise.all([
+            getClassSubjectSummary(classId, selectedSubject.subjectId),
+            getClassSubjectTrends(classId, selectedSubject.subjectId),
           ]);
 
           if (!isMounted) return;
 
-          setPrincipalSubjectKpis(subjectKpis);
+          setPrincipalSubjectKpis(subjectSummary as SubjectSummary);
           setPrincipalSubjectTrend(subjectTrend);
+          // Backend currently exposes class-level deep dive and at-risk endpoints only.
           setPrincipalDeepDiveTrend(deepDiveTrend);
-          setPrincipalAtRisk(subjectAtRisk);
+          setPrincipalAtRisk(classWideAtRisk);
         } else {
           setPrincipalSubjectKpis(null);
           setPrincipalSubjectTrend([]);
-          setPrincipalDeepDiveTrend([]);
+          setPrincipalDeepDiveTrend(deepDiveTrend);
           setPrincipalAtRisk(classWideAtRisk);
         }
-      } catch {
+
+      } catch (error) {
         if (!isMounted) return;
-        setPrincipalAnalyticsError('Unable to load detailed analytics at the moment.');
+        const message = error instanceof Error ? error.message : 'Unable to load detailed analytics at the moment.';
+        setPrincipalAnalyticsError(message);
       } finally {
         if (isMounted) {
           setIsLoadingPrincipalAnalytics(false);
@@ -538,7 +1197,7 @@ export function PrincipalDashboard() {
     return () => {
       isMounted = false;
     };
-  }, [selectedClassForPrincipal, selectedSubjectForPrincipal]);
+  }, [selectedClassForPrincipal, selectedSubjectForPrincipal, kpiSubjectPerformanceRows]);
   
   // ========== HANDLERS ==========
   const handleApproveItem = () => {
@@ -685,6 +1344,31 @@ export function PrincipalDashboard() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const handleExportClassPerformance = async () => {
+    if (!levelId) {
+      setKpiDataError('No level selected. Please choose a category first.');
+      return;
+    }
+
+    setIsExportingClassPerformance(true);
+    setKpiDataError(null);
+
+    try {
+      const blob = await exportClassPerformance(levelId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `class_performance_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to export class performance right now.';
+      setKpiDataError(message);
+    } finally {
+      setIsExportingClassPerformance(false);
+    }
+  };
   
   const getFilteredLogs = () => {
     return allAuditLogs.filter(log => {
@@ -783,46 +1467,72 @@ export function PrincipalDashboard() {
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Tabs */}
-      <div className="flex flex-wrap border-b border-border gap-1">
-        {[
-          { id: 'fee', label: 'Fee Oversight' },
-          { id: 'kpi', label: 'School KPI' },
-          { id: 'approvals', label: 'Approval Workflow' },
-          { id: 'resultApproval', label: 'Result Approval' },
-          { id: 'parentEngagement', label: 'Parent Engagement' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveMainTab(tab.id as any)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              activeMainTab === tab.id
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="border-b border-border overflow-x-auto">
+        <div className="flex gap-1 min-w-max">
+          {[
+            { id: 'fee', label: 'Fee Oversight' },
+            { id: 'kpi', label: 'School KPI' },
+            { id: 'approvals', label: 'Approval Workflow' },
+            { id: 'resultApproval', label: 'Result Approval' },
+            { id: 'parentEngagement', label: 'Parent Engagement' },
+            { id: 'schoolSetup', label: 'School Setup' },
+            { id: 'userManagement', label: 'User Management' },
+            { id: 'auditLogs', label: 'Audit Logs' },
+            { id: 'dataChecks', label: 'Data Checks' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveMainTab(tab.id as any)}
+              className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                activeMainTab === tab.id
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
       
       {/* ========== TAB 1: FEE OVERSIGHT ========== */}
       {activeMainTab === 'fee' && (
         <>
           <Card title="Fee Oversight (Executive View)" action={
-            <select value={selectedFeeTerm} onChange={e => setSelectedFeeTerm(e.target.value)} className="border p-1 rounded">
-              <option>Term 3, 2026</option><option>Term 2, 2026</option>
-            </select>
+            <div className="flex gap-2">
+              <select value={selectedFeeTerm} onChange={e => setSelectedFeeTerm(e.target.value)} className="border p-1 rounded">
+                <option>Term 3, 2026</option><option>Term 2, 2026</option>
+              </select>
+              <select value={selectedArmFilterId} onChange={(e) => setSelectedArmFilterId(e.target.value)} className="border p-1 rounded">
+                <option value="">All Arms</option>
+                {arms.map((arm) => (
+                  <option key={arm.id} value={arm.id}>{arm.name}</option>
+                ))}
+              </select>
+              <Button size="sm" variant="outline" onClick={loadFeeAndArmData}>Refresh</Button>
+            </div>
           }>
+            {isLoadingFeeData ? (
+              <div className="mb-4 rounded border border-border p-3 text-sm text-muted-foreground flex items-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Loading fee dashboard data...
+              </div>
+            ) : null}
+            {feeDataError ? (
+              <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {feeDataError}
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-              <div className="p-3 border rounded"><p className="text-sm">Total Billed</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi.totalBilled)}</p></div>
-              <div className="p-3 border rounded bg-green-50"><p className="text-sm">Total Paid</p><p className="text-xl font-bold text-green-700">{formatCurrency(feeExecutiveKpi.totalPaid)}</p></div>
-              <div className="p-3 border rounded"><p className="text-sm">Outstanding</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi.outstandingBalance)}</p></div>
-              <div className="p-3 border rounded"><p className="text-sm">Collection Rate</p><p className="text-xl font-bold">{feeExecutiveKpi.collectionRate}%</p></div>
+              <div className="p-3 border rounded"><p className="text-sm">Total Billed</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi?.totalBilled)}</p></div>
+              <div className="p-3 border rounded bg-green-50"><p className="text-sm">Total Paid</p><p className="text-xl font-bold text-green-700">{formatCurrency(feeExecutiveKpi?.totalPaid)}</p></div>
+              <div className="p-3 border rounded"><p className="text-sm">Outstanding</p><p className="text-xl font-bold">{formatCurrency(feeExecutiveKpi?.outstandingBalance)}</p></div>
+              <div className="p-3 border rounded"><p className="text-sm">Collection Rate</p><p className="text-xl font-bold">{feeExecutiveKpi?.collectionRate ?? 0}%</p></div>
             </div>
             <Card title="Class-Level Fee Performance">
               <table className="w-full text-sm">
                 <thead><tr className="border-b"><th>Class</th><th>Billed</th><th>Paid</th><th>Outstanding</th><th>Collection Rate</th><th>Action</th></tr></thead>
-                <tbody>{feeClassRows.map(row => <tr key={row.className} className="border-b"><td>{row.className}</td><td>{formatCurrency(row.billed)}</td><td>{formatCurrency(row.paid)}</td><td>{formatCurrency(row.outstanding)}</td><td>{row.collectionRate}%</td><td><Button size="sm" variant="outline" onClick={() => setSelectedFinanceClass(row.className)}><Eye size={14} /> View</Button></td></tr>)}</tbody>
+                <tbody>{feeClassRows.map(row => <tr key={row.armId} className="border-b"><td>{row.className}</td><td>{formatCurrency(row.billed)}</td><td>{formatCurrency(row.paid)}</td><td>{formatCurrency(row.outstanding)}</td><td>{row.collectionRate}%</td><td><Button size="sm" variant="outline" onClick={() => setSelectedFinanceClass(row.className)}><Eye size={14} /> View</Button></td></tr>)}</tbody>
               </table>
             </Card>
           </Card>
@@ -844,13 +1554,13 @@ export function PrincipalDashboard() {
                         <td className="font-medium">{item.name}</td>
                         <td>{item.category}</td>
                         <td>{formatCurrency(item.amount)}</td>
-                        <td>{item.term} • {item.classId ? `Class ${item.classId}` : 'All Classes'}</td>
+                        <td>{item.term} • {item.armId || item.classId ? `Arm ${item.armId || item.classId}` : 'All Arms'}</td>
                         <td>{item.dueDate}</td>
                         <td>{item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : '-'}</td>
                         <td>
                           <div className="flex gap-2">
-                            <Button size="sm" onClick={() => approvePendingFeeItem(item.id)}>Approve</Button>
-                            <Button size="sm" variant="destructive" onClick={() => rejectPendingFeeItem(item.id)}>Reject</Button>
+                            <Button size="sm" onClick={() => approvePendingFeeItem(item.id)} disabled={activeFeeActionId === item.id}>Approve</Button>
+                            <Button size="sm" variant="destructive" onClick={() => rejectPendingFeeItem(item.id)} disabled={activeFeeActionId === item.id}>Reject</Button>
                             <Button size="sm" variant="outline" onClick={() => viewFeeItemDetails(item.id)}>Details</Button>
                           </div>
                         </td>
@@ -897,7 +1607,7 @@ export function PrincipalDashboard() {
                         <p className="text-xs text-muted-foreground">{item.category}</p>
                       </td>
                       <td>{formatCurrency(item.amount)}</td>
-                      <td>{item.term} • {item.classId ? `Class ${item.classId}` : 'All Classes'}</td>
+                      <td>{item.term} • {item.armId || item.classId ? `Arm ${item.armId || item.classId}` : 'All Arms'}</td>
                       <td>{item.dueDate}</td>
                       <td><Badge variant={item.isCompulsory ? 'approved' : 'default'}>{item.isCompulsory ? 'Yes' : 'No'}</Badge></td>
                       <td><Badge variant={getStatusBadgeVariant(item.status)}>{item.status.replace('_', ' ')}</Badge></td>
@@ -917,36 +1627,49 @@ export function PrincipalDashboard() {
       {/* ========== TAB 2: SCHOOL KPI (Blocks 4 & 5) ========== */}
       {activeMainTab === 'kpi' && (
         <>
+          {isLoadingKpiData ? (
+            <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Loading school KPI data...
+            </div>
+          ) : null}
+
+          {kpiDataError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {kpiDataError}
+            </div>
+          ) : null}
+
           {/* KPI Strip */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="border rounded p-3"><div className="flex justify-between"><span>Pass Rate</span><Trophy size={16}/></div><p className="text-2xl font-bold">82%</p></div>
-            <div className="border rounded p-3"><div className="flex justify-between"><span>Avg Score</span><TrendingUp size={16}/></div><p className="text-2xl font-bold">76.5%</p></div>
-            <div className="border rounded p-3"><div className="flex justify-between"><span>Attendance</span><Activity size={16}/></div><p className="text-2xl font-bold">91%</p></div>
-            <div className="border rounded p-3"><div className="flex justify-between"><span>Students</span><Users size={16}/></div><p className="text-2xl font-bold">342</p></div>
+            <div className="border rounded p-3"><div className="flex justify-between"><span>Pass Rate</span><Trophy size={16}/></div><p className="text-2xl font-bold">{schoolSummary?.passRate ?? 0}%</p></div>
+            <div className="border rounded p-3"><div className="flex justify-between"><span>Avg Score</span><TrendingUp size={16}/></div><p className="text-2xl font-bold">{schoolSummary?.averageScore ?? 0}%</p></div>
+            <div className="border rounded p-3"><div className="flex justify-between"><span>Attendance</span><Activity size={16}/></div><p className="text-2xl font-bold">{schoolSummary?.attendanceRate ?? 0}%</p></div>
+            <div className="border rounded p-3"><div className="flex justify-between"><span>Students</span><Users size={16}/></div><p className="text-2xl font-bold">{schoolSummary?.totalStudents ?? 0}</p></div>
           </div>
           
           {/* Subject Performance Chart */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card title="Subject Performance">
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={subjectAverages}><CartesianGrid /><XAxis dataKey="subject" /><YAxis domain={[0,100]} /><Tooltip formatter={(value, name) => [`${value}%`, name]} /><Bar dataKey="average" fill="#3b82f6" /></BarChart>
+                <BarChart data={kpiSubjectPerformanceRows}><CartesianGrid /><XAxis dataKey="subject" /><YAxis domain={[0,100]} /><Tooltip formatter={(value, name) => [`${value}%`, name]} /><Bar dataKey="average" fill="#3b82f6" /></BarChart>
               </ResponsiveContainer>
             </Card>
-            <Card title="Class Performance" action={<Button variant="outline" size="sm" onClick={() => alert('Export CSV')}><Download size={14} /> Export</Button>}>
-              <table className="w-full text-sm"><thead><tr><th>Class</th><th>Avg Score</th><th>Pass Rate</th><th>Attendance</th><th>Rank</th></tr></thead><tbody>{classPerformance.map(c => <tr key={c.class}><td>{c.class}</td><td>{c.average}%</td><td>{c.passRate}%</td><td>{c.attendanceRate}%</td><td>{c.rank}</td></tr>)}</tbody></table>
+            <Card title="Class Performance" action={<Button variant="outline" size="sm" onClick={handleExportClassPerformance} disabled={isExportingClassPerformance}>{isExportingClassPerformance ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />} Export</Button>}>
+              <table className="w-full text-sm"><thead><tr><th>Class</th><th>Avg Score</th><th>Pass Rate</th><th>Attendance</th><th>Rank</th></tr></thead><tbody>{kpiClassPerformanceRows.map(c => <tr key={c.classId || c.className}><td>{c.className}</td><td>{c.averageScore}%</td><td>{c.passRate}%</td><td>{c.attendanceRate}%</td><td>{c.rank || '-'}</td></tr>)}</tbody></table>
             </Card>
           </div>
           
           {/* Attendance Trend & Medication Exceptions & Transport */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card title="Attendance Trend (Last 30 days)">
-              <ResponsiveContainer width="100%" height={200}><LineChart data={attendanceTrend}><CartesianGrid /><XAxis dataKey="week" /><YAxis /><Tooltip /><Line type="monotone" dataKey="present" stroke="#10b981" /></LineChart></ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={200}><LineChart data={kpiAttendanceTrend}><CartesianGrid /><XAxis dataKey="week" /><YAxis /><Tooltip /><Line type="monotone" dataKey="present" stroke="#10b981" /></LineChart></ResponsiveContainer>
             </Card>
             <Card title="Medication Exceptions Today">
-              {medicationExceptions.map((ex,i) => <div key={i} className="flex items-center gap-2 p-2 border-b"><Heart size={14} className="text-red-500"/><div><p className="text-sm">{ex.student} ({ex.class}) - {ex.medication}</p><p className="text-xs text-muted-foreground">Missed at {ex.timeDue} - {ex.reason}</p></div></div>)}
+              {kpiMedicationExceptions.length > 0 ? kpiMedicationExceptions.map((ex, i) => <div key={`${ex.student}-${ex.timeDue}-${i}`} className="flex items-center gap-2 p-2 border-b"><Heart size={14} className="text-red-500"/><div><p className="text-sm">{ex.student} ({ex.class}) - {ex.medication}</p><p className="text-xs text-muted-foreground">Missed at {ex.timeDue} - {ex.reason || ex.status || 'No reason provided'}</p></div></div>) : <p className="text-sm text-muted-foreground">No medication exceptions for today.</p>}
             </Card>
             <Card title="Transport Distribution">
-              <ResponsiveContainer width="100%" height={180}><PieChart><Pie data={transportDistribution} dataKey="count" nameKey="mode" cx="50%" cy="50%" outerRadius={60} label><Cell fill="#3b82f6"/><Cell fill="#10b981"/><Cell fill="#f59e0b"/><Cell fill="#8b5cf6"/></Pie><Tooltip /></PieChart></ResponsiveContainer>
+              <ResponsiveContainer width="100%" height={180}><PieChart><Pie data={kpiTransportDistribution} dataKey="count" nameKey="mode" cx="50%" cy="50%" outerRadius={60} label><Cell fill="#3b82f6"/><Cell fill="#10b981"/><Cell fill="#f59e0b"/><Cell fill="#8b5cf6"/></Pie><Tooltip /></PieChart></ResponsiveContainer>
             </Card>
           </div>
 
@@ -959,14 +1682,14 @@ export function PrincipalDashboard() {
                   className="w-full border rounded p-2 mt-1"
                   value={selectedClassForPrincipal?.id || ''}
                   onChange={(e) => {
-                    const classObj = classPerformance.find((c) => c.class === e.target.value);
-                    setSelectedClassForPrincipal(classObj ? { id: classObj.class, className: classObj.class } : null);
+                    const selectedClass = kpiClasses.find((item) => item.classId === e.target.value);
+                    setSelectedClassForPrincipal(selectedClass ? { id: selectedClass.classId, className: selectedClass.className } : null);
                     setSelectedSubjectForPrincipal(null);
                   }}
                 >
                   <option value="">-- Choose a class --</option>
-                  {classPerformance.map((c) => (
-                    <option key={c.class} value={c.class}>{c.class}</option>
+                  {kpiClasses.map((classInfo) => (
+                    <option key={classInfo.classId} value={classInfo.classId}>{classInfo.className}</option>
                   ))}
                 </select>
               </div>
@@ -980,7 +1703,7 @@ export function PrincipalDashboard() {
                 >
                   <option value="">-- All subjects --</option>
                   {subjectsForSelectedClass.map((subj) => (
-                    <option key={subj} value={subj}>{subj}</option>
+                    <option key={subj.subjectId} value={subj.subjectName}>{subj.subjectName}</option>
                   ))}
                 </select>
               </div>
@@ -1002,13 +1725,13 @@ export function PrincipalDashboard() {
             {selectedClassForPrincipal && !isLoadingPrincipalAnalytics && !principalAnalyticsError ? (
               <ClassSubjectAnalytics
                 selectedClass={selectedClassForPrincipal}
-                selectedSubjectId={selectedSubjectForPrincipal}
+                selectedSubjectId={selectedSubjectLabelForPrincipal}
                 onSelectSubject={setSelectedSubjectForPrincipal}
                 subjectKpis={principalSubjectKpis ?? undefined}
                 subjectTrendData={principalSubjectTrend}
-                classPerformanceData={classPerformance.map((c) => ({
-                  className: c.class,
-                  averageScore: c.average,
+                classPerformanceData={kpiClassPerformanceRows.map((c) => ({
+                  className: c.className,
+                  averageScore: c.averageScore,
                   passRate: c.passRate,
                   attendanceRate: c.attendanceRate,
                 }))}
@@ -1190,6 +1913,387 @@ export function PrincipalDashboard() {
           </Card>
         </>
       )}
+
+      {/* ========== TAB 6: SCHOOL SETUP (READ-ONLY) ========== */}
+      {activeMainTab === 'schoolSetup' && (
+        <div className="space-y-6">
+          <Card title="School Configuration" action={<Button size="sm" onClick={() => alert('School setup saved successfully.')}>Save Configuration</Button>}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded border p-3">
+                <p className="text-sm text-muted-foreground">School Name</p>
+                <input
+                  className="w-full border rounded p-2 mt-1"
+                  value={schoolSetupState.schoolProfile.schoolName}
+                  onChange={(e) => setSchoolSetupState((prev) => ({
+                    ...prev,
+                    schoolProfile: { ...prev.schoolProfile, schoolName: e.target.value },
+                  }))}
+                />
+              </div>
+              <div className="rounded border p-3">
+                <p className="text-sm text-muted-foreground">School Code</p>
+                <input
+                  className="w-full border rounded p-2 mt-1"
+                  value={schoolSetupState.schoolProfile.schoolCode}
+                  onChange={(e) => setSchoolSetupState((prev) => ({
+                    ...prev,
+                    schoolProfile: { ...prev.schoolProfile, schoolCode: e.target.value },
+                  }))}
+                />
+              </div>
+              <div className="rounded border p-3">
+                <p className="text-sm text-muted-foreground">Academic Session</p>
+                <input
+                  className="w-full border rounded p-2 mt-1"
+                  value={schoolSetupState.schoolProfile.academicSession}
+                  onChange={(e) => setSchoolSetupState((prev) => ({
+                    ...prev,
+                    schoolProfile: { ...prev.schoolProfile, academicSession: e.target.value },
+                  }))}
+                />
+              </div>
+              <div className="rounded border p-3">
+                <p className="text-sm text-muted-foreground">Principal</p>
+                <input
+                  className="w-full border rounded p-2 mt-1"
+                  value={schoolSetupState.schoolProfile.principalName}
+                  onChange={(e) => setSchoolSetupState((prev) => ({
+                    ...prev,
+                    schoolProfile: { ...prev.schoolProfile, principalName: e.target.value },
+                  }))}
+                />
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Academic Calendar" action={<Button size="sm" onClick={addTerm}><Plus size={14} className="mr-1" />Add Term</Button>}>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+              <input className="border rounded p-2" placeholder="Term name" value={newTermDraft.name} onChange={(e) => setNewTermDraft((prev) => ({ ...prev, name: e.target.value }))} />
+              <input type="date" className="border rounded p-2" value={newTermDraft.startDate} onChange={(e) => setNewTermDraft((prev) => ({ ...prev, startDate: e.target.value }))} />
+              <input type="date" className="border rounded p-2" value={newTermDraft.endDate} onChange={(e) => setNewTermDraft((prev) => ({ ...prev, endDate: e.target.value }))} />
+              <select className="border rounded p-2" value={newTermDraft.status} onChange={(e) => setNewTermDraft((prev) => ({ ...prev, status: e.target.value as 'completed' | 'active' | 'upcoming' }))}>
+                <option value="upcoming">upcoming</option>
+                <option value="active">active</option>
+                <option value="completed">completed</option>
+              </select>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-2">Term</th>
+                    <th className="py-2">Start Date</th>
+                    <th className="py-2">End Date</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {schoolSetupState.termDates.map((term) => (
+                    <tr key={term.name} className="border-b">
+                      <td className="py-2 font-medium">{term.name}</td>
+                      <td className="py-2">{term.startDate}</td>
+                      <td className="py-2">{term.endDate}</td>
+                      <td className="py-2">
+                        <Badge variant={term.status === 'active' ? 'approved' : term.status === 'completed' ? 'default' : 'pending'}>{term.status}</Badge>
+                      </td>
+                      <td className="py-2">
+                        <Button size="sm" variant="destructive" onClick={() => removeTerm(term.name)}>Delete</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card title="Class Configuration" action={<Button size="sm" onClick={addClassConfig}><Plus size={14} className="mr-1" />Add Class</Button>}>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+                <input className="border rounded p-2" placeholder="Class name" value={newClassDraft.className} onChange={(e) => setNewClassDraft((prev) => ({ ...prev, className: e.target.value }))} />
+                <input className="border rounded p-2" placeholder="Stream" value={newClassDraft.stream} onChange={(e) => setNewClassDraft((prev) => ({ ...prev, stream: e.target.value }))} />
+                <input type="number" className="border rounded p-2" placeholder="Capacity" value={newClassDraft.capacity} onChange={(e) => setNewClassDraft((prev) => ({ ...prev, capacity: Number(e.target.value) || 0 }))} />
+                <input type="number" className="border rounded p-2" placeholder="Enrolled" value={newClassDraft.enrolled} onChange={(e) => setNewClassDraft((prev) => ({ ...prev, enrolled: Number(e.target.value) || 0 }))} />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="py-2">Class</th>
+                      <th className="py-2">Stream</th>
+                      <th className="py-2">Capacity</th>
+                      <th className="py-2">Enrolled</th>
+                      <th className="py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schoolSetupState.classConfiguration.map((row, index) => (
+                      <tr key={row.className} className="border-b">
+                        <td className="py-2 font-medium">{row.className}</td>
+                        <td className="py-2">
+                          <input className="border rounded p-1 w-24" value={row.stream} onChange={(e) => setSchoolSetupState((prev) => {
+                            const next = [...prev.classConfiguration];
+                            next[index] = { ...next[index], stream: e.target.value };
+                            return { ...prev, classConfiguration: next };
+                          })} />
+                        </td>
+                        <td className="py-2">
+                          <input type="number" className="border rounded p-1 w-20" value={row.capacity} onChange={(e) => setSchoolSetupState((prev) => {
+                            const next = [...prev.classConfiguration];
+                            next[index] = { ...next[index], capacity: Number(e.target.value) || 0 };
+                            return { ...prev, classConfiguration: next };
+                          })} />
+                        </td>
+                        <td className="py-2">
+                          <input type="number" className="border rounded p-1 w-20" value={row.enrolled} onChange={(e) => setSchoolSetupState((prev) => {
+                            const next = [...prev.classConfiguration];
+                            next[index] = { ...next[index], enrolled: Number(e.target.value) || 0 };
+                            return { ...prev, classConfiguration: next };
+                          })} />
+                        </td>
+                        <td className="py-2"><Button size="sm" variant="destructive" onClick={() => removeClassConfig(row.className)}>Delete</Button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            <Card title="Subject Offerings & Assessment Rules">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Subjects</p>
+                  <div className="flex gap-2 mb-2">
+                    <input className="border rounded p-2 flex-1" placeholder="Add subject" value={subjectDraft} onChange={(e) => setSubjectDraft(e.target.value)} />
+                    <Button size="sm" onClick={addSubject}><Plus size={14} className="mr-1" />Add</Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {schoolSetupState.subjectOfferings.map((subject) => (
+                      <div key={subject} className="inline-flex items-center gap-1">
+                        <Badge variant="default">{subject}</Badge>
+                        <Button size="sm" variant="destructive" onClick={() => removeSubject(subject)}>X</Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded border p-3 text-sm">
+                  <p className="mb-2"><strong>Test Window:</strong></p>
+                  <input className="border rounded p-2 w-full mb-2" value={schoolSetupState.assessmentConfig.testWindow} onChange={(e) => setSchoolSetupState((prev) => ({
+                    ...prev,
+                    assessmentConfig: { ...prev.assessmentConfig, testWindow: e.target.value },
+                  }))} />
+                  <p className="mb-2"><strong>Exam Window:</strong></p>
+                  <input className="border rounded p-2 w-full mb-2" value={schoolSetupState.assessmentConfig.examWindow} onChange={(e) => setSchoolSetupState((prev) => ({
+                    ...prev,
+                    assessmentConfig: { ...prev.assessmentConfig, examWindow: e.target.value },
+                  }))} />
+                  <p className="mb-2"><strong>Grading Schema:</strong></p>
+                  <input className="border rounded p-2 w-full" value={schoolSetupState.assessmentConfig.gradingSchema} onChange={(e) => setSchoolSetupState((prev) => ({
+                    ...prev,
+                    assessmentConfig: { ...prev.assessmentConfig, gradingSchema: e.target.value },
+                  }))} />
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* ========== TAB 7: USER MANAGEMENT (READ-ONLY) ========== */}
+      {activeMainTab === 'userManagement' && (
+        <Card title="User Management" action={<Button size="sm" onClick={openAddUserModal}><Plus size={14} className="mr-1" />Add User</Button>}>
+          {isLoadingUsers ? (
+            <div className="mb-4 rounded border border-border p-3 text-sm text-muted-foreground flex items-center gap-2">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Loading users...
+            </div>
+          ) : null}
+          {userManagementError ? (
+            <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {userManagementError}
+            </div>
+          ) : null}
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+            <select
+              className="border rounded p-2 text-sm"
+              value={principalUserRoleFilter}
+              onChange={(e) => setPrincipalUserRoleFilter(e.target.value as 'all' | StaffRole)}
+            >
+              <option value="all">All Roles</option>
+              <option value="admin">admin</option>
+              <option value="principal">principal</option>
+              <option value="secretary">secretary</option>
+              <option value="teacher">teacher</option>
+              <option value="helper">helper</option>
+              <option value="bursar">bursar</option>
+              <option value="accountant">accountant</option>
+            </select>
+            <select
+              className="border rounded p-2 text-sm"
+              value={principalUserStatusFilter}
+              onChange={(e) => setPrincipalUserStatusFilter(e.target.value as 'all' | StaffStatus)}
+            >
+              <option value="all">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="suspended">Suspended</option>
+              <option value="deleted">Deleted</option>
+            </select>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="py-2">Name</th>
+                  <th className="py-2">Email</th>
+                  <th className="py-2">Phone</th>
+                  <th className="py-2">Role</th>
+                  <th className="py-2">Levels</th>
+                  <th className="py-2">Status</th>
+                  <th className="py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPrincipalUsers.map((user) => (
+                  <tr key={user.id} className="border-b">
+                    <td className="py-2 font-medium">{`${user.firstName} ${user.lastName}`.trim()}</td>
+                    <td className="py-2">{user.email}</td>
+                    <td className="py-2">{user.phoneNumber || '-'}</td>
+                    <td className="py-2"><Badge variant="default">{user.role}</Badge></td>
+                    <td className="py-2">
+                      {(
+                        (user.levels && user.levels.length
+                          ? user.levels.map((level) => level.name)
+                          : (user.levelIds || []).map((id) => availableLevels.find((level) => level.id === id)?.name || id)
+                        ).join(', ')
+                      ) || '-'}
+                    </td>
+                    <td className="py-2">
+                      <select
+                        className="border rounded p-1 text-xs"
+                        value={user.status}
+                        onChange={(e) => handleUserStatusChange(user.id, e.target.value as StaffStatus)}
+                      >
+                        <option value="active">active</option>
+                        <option value="inactive">inactive</option>
+                        <option value="suspended">suspended</option>
+                        <option value="deleted">deleted</option>
+                      </select>
+                    </td>
+                    <td className="py-2">
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEditUserModal(user)}>Edit</Button>
+                        <Button size="sm" variant="destructive" onClick={() => deleteUser(user.id)}>Delete</Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* ========== TAB 8: AUDIT LOGS (READ-ONLY) ========== */}
+      {activeMainTab === 'auditLogs' && (
+        <Card title="Audit Logs & Security Registry" action={<Button size="sm" variant="outline" onClick={handleExportLogs}><Download size={14} className="mr-1" />Export CSV</Button>}>
+          <div className="mb-3 p-3 border border-amber-200 bg-amber-50 rounded text-sm">
+            Immutable View: Audit logs are read-only and cannot be edited or deleted.
+          </div>
+          <div className="overflow-x-auto border rounded">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-accent/30 text-left">
+                  <th className="py-2 px-2">Timestamp</th>
+                  <th className="py-2 px-2">User</th>
+                  <th className="py-2 px-2">Role</th>
+                  <th className="py-2 px-2">Module</th>
+                  <th className="py-2 px-2">Action</th>
+                  <th className="py-2 px-2">Details</th>
+                  <th className="py-2 px-2">Risk</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allAuditLogs.map((log) => (
+                  <tr key={log.id} className="border-b">
+                    <td className="py-2 px-2 whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
+                    <td className="py-2 px-2">{log.userName}</td>
+                    <td className="py-2 px-2">{log.userRole}</td>
+                    <td className="py-2 px-2">{log.module}</td>
+                    <td className="py-2 px-2 font-medium">{log.action}</td>
+                    <td className="py-2 px-2 text-muted-foreground">{log.details}</td>
+                    <td className="py-2 px-2">
+                      <Badge variant={log.riskLevel === 'high' ? 'rejected' : log.riskLevel === 'medium' ? 'pending' : 'default'}>{log.riskLevel}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* ========== TAB 9: DATA CHECKS (READ-ONLY) ========== */}
+      {activeMainTab === 'dataChecks' && (
+        <div className="space-y-4">
+          <Card title="Data Integrity Checks" action={<Button size="sm" onClick={openAddDataCheckModal}><Plus size={14} className="mr-1" />Add Manual Check</Button>}>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Severity:</span>
+              <select
+                className="border rounded p-2 text-sm"
+                value={principalDataCheckSeverity}
+                onChange={(e) => setPrincipalDataCheckSeverity(e.target.value as 'all' | PrincipalDataCheck['severity'])}
+              >
+                <option value="all">All</option>
+                <option value="warning">Warning</option>
+                <option value="critical">Critical</option>
+              </select>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-2">Severity</th>
+                    <th className="py-2">Category</th>
+                    <th className="py-2">Class</th>
+                    <th className="py-2">Owner</th>
+                    <th className="py-2">Issue</th>
+                    <th className="py-2">Status</th>
+                    <th className="py-2">Detected</th>
+                    <th className="py-2">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPrincipalDataChecks.map((check) => (
+                    <tr key={check.id} className="border-b">
+                      <td className="py-2">
+                        <Badge variant={getDataCheckSeverityBadgeVariant(check.severity)}>{check.severity}</Badge>
+                      </td>
+                      <td className="py-2">{check.category}</td>
+                      <td className="py-2">{check.className}</td>
+                      <td className="py-2">{check.owner}</td>
+                      <td className="py-2 text-muted-foreground">{check.issue}</td>
+                      <td className="py-2">
+                        <Badge variant={check.status === 'resolved' ? 'approved' : 'pending'}>{check.status}</Badge>
+                      </td>
+                      <td className="py-2">{new Date(check.detectedAt).toLocaleString()}</td>
+                      <td className="py-2">
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => resolveDataCheck(check.id)}>{check.status === 'resolved' ? 'Reopen' : 'Mark Resolved'}</Button>
+                          <Button size="sm" variant="outline" onClick={() => openEditDataCheckModal(check)}>Edit</Button>
+                          <Button size="sm" variant="destructive" onClick={() => deleteDataCheck(check.id)}>Delete</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
       
       {/* ========== MODALS ========== */}
       {/* Review Modal for Block 3 */}
@@ -1254,12 +2358,141 @@ export function PrincipalDashboard() {
           <div className="space-y-2 text-sm">
             <p><strong>Category:</strong> {selectedFeeItemDetail.category}</p>
             <p><strong>Amount:</strong> {formatCurrency(selectedFeeItemDetail.amount)}</p>
-            <p><strong>Scope:</strong> {selectedFeeItemDetail.term} • {selectedFeeItemDetail.classId ? `Class ${selectedFeeItemDetail.classId}` : 'All Classes'}</p>
+            <p><strong>Scope:</strong> {selectedFeeItemDetail.term} • {selectedFeeItemDetail.armId || selectedFeeItemDetail.classId ? `Arm ${selectedFeeItemDetail.armId || selectedFeeItemDetail.classId}` : 'All Arms'}</p>
             <p><strong>Due Date:</strong> {selectedFeeItemDetail.dueDate}</p>
             <p><strong>Status:</strong> {selectedFeeItemDetail.status}</p>
             <p><strong>Submitted At:</strong> {selectedFeeItemDetail.submittedAt ? new Date(selectedFeeItemDetail.submittedAt).toLocaleString() : '-'}</p>
             <p><strong>Approved At:</strong> {selectedFeeItemDetail.approvedAt ? new Date(selectedFeeItemDetail.approvedAt).toLocaleString() : '-'}</p>
             <p><strong>Rejection Reason:</strong> {selectedFeeItemDetail.rejectionReason || '-'}</p>
+          </div>
+        </Modal>
+      )}
+
+      {isUserModalOpen && (
+        <Modal
+          isOpen
+          onClose={() => setIsUserModalOpen(false)}
+          title={editingUserId ? 'Edit User' : 'Add User'}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsUserModalOpen(false)}>Cancel</Button>
+              <Button onClick={saveUser} disabled={isSavingUser}>{editingUserId ? 'Save Changes' : 'Create User'}</Button>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            {userManagementError ? <p className="text-sm text-red-600">{userManagementError}</p> : null}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <label className="text-sm">First Name</label>
+                <input className="w-full border rounded p-2" value={userForm.firstName} onChange={(e) => setUserForm((prev) => ({ ...prev, firstName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm">Last Name</label>
+                <input className="w-full border rounded p-2" value={userForm.lastName} onChange={(e) => setUserForm((prev) => ({ ...prev, lastName: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm">Email</label>
+              <input className="w-full border rounded p-2" value={userForm.email} onChange={(e) => setUserForm((prev) => ({ ...prev, email: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm">Phone Number (optional)</label>
+              <input className="w-full border rounded p-2" value={userForm.phoneNumber} onChange={(e) => setUserForm((prev) => ({ ...prev, phoneNumber: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <label className="text-sm">Role</label>
+                <select
+                  className="w-full border rounded p-2"
+                  value={userForm.role}
+                  onChange={(e) => setUserForm((prev) => ({ ...prev, role: e.target.value as StaffRole }))}
+                  disabled={Boolean(editingUserId)}
+                >
+                  <option value="admin">admin</option>
+                  <option value="principal">principal</option>
+                  <option value="secretary">secretary</option>
+                  <option value="teacher">teacher</option>
+                  <option value="helper">helper</option>
+                  <option value="bursar">bursar</option>
+                  <option value="accountant">accountant</option>
+                </select>
+                {editingUserId ? <p className="text-xs text-muted-foreground mt-1">Role update is handled by a dedicated endpoint.</p> : null}
+              </div>
+              <div>
+                <label className="text-sm">Levels</label>
+                <div className="border rounded p-2 max-h-40 overflow-y-auto space-y-2">
+                  {availableLevels.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No levels available.</p>
+                  ) : (
+                    availableLevels.map((level) => (
+                      <label key={level.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={userForm.levelIds.includes(level.id)}
+                          onChange={(e) => {
+                            setUserForm((prev) => ({
+                              ...prev,
+                              levelIds: e.target.checked
+                                ? [...prev.levelIds, level.id]
+                                : prev.levelIds.filter((id) => id !== level.id),
+                            }));
+                          }}
+                        />
+                        {level.name}
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {isDataCheckModalOpen && (
+        <Modal
+          isOpen
+          onClose={() => setIsDataCheckModalOpen(false)}
+          title={editingDataCheckId ? 'Edit Data Check' : 'Add Manual Data Check'}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsDataCheckModalOpen(false)}>Cancel</Button>
+              <Button onClick={saveDataCheck}>{editingDataCheckId ? 'Save Changes' : 'Add Check'}</Button>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <label className="text-sm">Severity</label>
+                <select className="w-full border rounded p-2" value={dataCheckForm.severity} onChange={(e) => setDataCheckForm((prev) => ({ ...prev, severity: e.target.value as PrincipalDataCheck['severity'] }))}>
+                  <option value="warning">warning</option>
+                  <option value="critical">critical</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm">Category</label>
+                <select className="w-full border rounded p-2" value={dataCheckForm.category} onChange={(e) => setDataCheckForm((prev) => ({ ...prev, category: e.target.value as PrincipalDataCheck['category'] }))}>
+                  <option value="Missing Scores">Missing Scores</option>
+                  <option value="Attendance">Attendance</option>
+                  <option value="Fees">Fees</option>
+                  <option value="Assessments">Assessments</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm">Class</label>
+                <input className="w-full border rounded p-2" value={dataCheckForm.className} onChange={(e) => setDataCheckForm((prev) => ({ ...prev, className: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm">Owner</label>
+                <input className="w-full border rounded p-2" value={dataCheckForm.owner} onChange={(e) => setDataCheckForm((prev) => ({ ...prev, owner: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm">Issue</label>
+              <textarea className="w-full border rounded p-2" rows={3} value={dataCheckForm.issue} onChange={(e) => setDataCheckForm((prev) => ({ ...prev, issue: e.target.value }))} />
+            </div>
           </div>
         </Modal>
       )}

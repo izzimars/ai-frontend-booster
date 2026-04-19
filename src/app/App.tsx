@@ -28,8 +28,49 @@ import { SelectLevelPage } from './components/auth/SelectLevelPage';
 import { SelectedLevelProvider, useSelectedLevel } from './components/auth/LevelSelectionContext';
 import { Toaster } from './components/ui/sonner';
 import { ChevronDown } from 'lucide-react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '../api/client';
+import { generateSchoolToken } from '../services/auth';
+import { getCurrentSchoolId, getSchoolToken, setCurrentLevelId, setCurrentSchoolId, syncApiTokensFromStorage } from '../services/apiClient';
+
+type StaffCategory = {
+  name: string;
+  uuid: string;
+  categoryOrder?: number;
+};
+
+type StaffSchoolAssignment = {
+  staff_id?: number;
+  role?: string;
+  school_id?: string;
+  school_name?: string;
+  school_status?: string;
+  setup_stage?: string;
+  categories?: StaffCategory[];
+};
+
+type LoginStudent = {
+  id?: string;
+  student_id?: string;
+  uuid?: string;
+  fullName?: string;
+  name?: string;
+  className?: string;
+  class_name?: string;
+};
+
+type LoginDataShape = {
+  token?: string;
+  refreshToken?: string;
+  user?: Record<string, unknown>;
+  students?: LoginStudent[];
+  schools?: StaffSchoolAssignment[];
+};
+
+type LoginResponseShape = {
+  success?: boolean;
+  data?: LoginDataShape;
+};
 
 type SetupStage =
   | 'pending'
@@ -41,12 +82,18 @@ type SetupStage =
 
 type AppRole = 'parent' | 'teacher' | 'principal' | 'bursar' | 'admin' | 'gate' | 'nurse';
 
+const postLoginPayloadKey = 'post-login-response';
+const selectedSchoolAssignmentKey = 'selected-school-assignment';
+const selectedSchoolRoleKey = 'selected-school-role';
+const selectedStudentKey = 'selected-student';
+
 const normalizeRoleValue = (value: string): AppRole | null => {
   const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
 
   if (normalized === 'parent' || normalized === 'guardian') return 'parent';
   if (normalized === 'teacher') return 'teacher';
   if (normalized === 'principal') return 'principal';
+  if (normalized === 'proprietor') return 'principal';
   if (normalized === 'bursar' || normalized === 'accountant') return 'bursar';
   if (normalized === 'admin' || normalized === 'administrator') return 'admin';
   if (normalized === 'gate' || normalized === 'gate_staff' || normalized === 'gatestaff') return 'gate';
@@ -131,6 +178,61 @@ const getOnboardingRoute = (stage: SetupStage) => {
   }
 };
 
+const getCategoryOrder = (category: StaffCategory) => {
+  if (typeof category.categoryOrder === 'number') return category.categoryOrder;
+  return Number.MAX_SAFE_INTEGER;
+};
+
+const sortCategories = (categories: StaffCategory[] = []) => [...categories].sort((a, b) => getCategoryOrder(a) - getCategoryOrder(b));
+
+const normalizeSchoolSetupStage = (setupStage: unknown): SetupStage | null => {
+  if (typeof setupStage !== 'string') return null;
+  return normalizeSetupStage(setupStage);
+};
+
+const getStudentId = (student: LoginStudent) => student.id || student.student_id || student.uuid || '';
+
+const getStudentDisplayName = (student: LoginStudent) => student.fullName || student.name || getStudentId(student) || 'Student';
+
+const getStudentClassName = (student: LoginStudent) => student.className || student.class_name || 'N/A';
+
+const getCompletedStaffSchools = (schools: StaffSchoolAssignment[] = []) =>
+  schools.filter((school) => normalizeSchoolSetupStage(school.setup_stage) === 'completed');
+
+export const getInitialRouteAfterLogin = (loginData: LoginDataShape): string => {
+  const schools = Array.isArray(loginData.schools) ? loginData.schools : [];
+  const students = Array.isArray(loginData.students) ? loginData.students : [];
+
+  if (schools.length > 0) {
+    const completedSchools = getCompletedStaffSchools(schools);
+
+    if (!completedSchools.length) {
+      const firstSchoolStage = normalizeSchoolSetupStage(schools[0]?.setup_stage) ?? 'pending';
+      return getOnboardingRoute(firstSchoolStage);
+    }
+
+    if (completedSchools.length > 1) return '/select-school';
+
+    const onlySchool = completedSchools[0];
+    const categories = sortCategories(onlySchool.categories || []);
+    if (categories.length > 1) {
+      return `/select-category?schoolId=${encodeURIComponent(onlySchool.school_id || '')}`;
+    }
+
+    return '/dashboard';
+  }
+
+  if (students.length > 1) return '/select-student';
+  if (students.length === 1) {
+    const studentId = getStudentId(students[0]);
+    if (studentId) {
+      return `/guardian/${encodeURIComponent(studentId)}`;
+    }
+  }
+
+  return '/no-access';
+};
+
 const setupPathByRoute = (pathname: string): string | null => {
   if (pathname === '/setup/session' || pathname === '/auth/school-setup') return '/setup/session';
   if (pathname === '/setup/term' || pathname === '/auth/school-setup/term' || pathname === '/onboarding/terms') return '/setup/term';
@@ -186,11 +288,319 @@ function OnboardingGuard({ children }: OnboardingGuardProps) {
   return <>{children}</>;
 }
 
+function NoAccessPage() {
+  return (
+    <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">No Access Assigned</h1>
+        <p className="mt-3 text-sm text-slate-600">
+          Your account does not currently have any staff schools or guardian students assigned.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PostLoginRouterPage() {
+  const navigate = useNavigate();
+  const { setSelectedLevel, clearSelectedLevel } = useSelectedLevel();
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const stored = localStorage.getItem(postLoginPayloadKey);
+    if (!stored) {
+      navigate('/auth/login', { replace: true });
+      return;
+    }
+
+    let parsed: LoginResponseShape | null = null;
+    try {
+      parsed = JSON.parse(stored) as LoginResponseShape;
+    } catch {
+      localStorage.removeItem(postLoginPayloadKey);
+      navigate('/auth/login', { replace: true });
+      return;
+    }
+
+    const routeUser = async () => {
+      const data = parsed?.data || {};
+      const initialRoute = getInitialRouteAfterLogin(data);
+
+      const schools = getCompletedStaffSchools(Array.isArray(data.schools) ? data.schools : []);
+      const students = Array.isArray(data.students) ? data.students : [];
+
+      if (schools.length === 1) {
+        const school = schools[0];
+        localStorage.setItem(selectedSchoolAssignmentKey, JSON.stringify(school));
+        if (typeof school.role === 'string') {
+          localStorage.setItem(selectedSchoolRoleKey, school.role);
+        }
+        if (school.school_id) {
+          setCurrentSchoolId(school.school_id);
+          await generateSchoolToken(school.school_id);
+        }
+
+        const categories = sortCategories(school.categories || []);
+        if (categories.length === 1 && categories[0].uuid) {
+          setSelectedLevel({ levelUuid: categories[0].uuid, levelName: categories[0].name });
+          setCurrentLevelId(categories[0].uuid);
+        }
+        if (categories.length === 0) {
+          clearSelectedLevel();
+        }
+      }
+
+      if (students.length === 1) {
+        localStorage.setItem(selectedStudentKey, JSON.stringify(students[0]));
+      }
+
+      if (!isMounted) return;
+      navigate(initialRoute, { replace: true });
+    };
+
+    routeUser().catch((err) => {
+      if (!isMounted) return;
+      setError(err instanceof Error ? err.message : 'Unable to initialize school session.');
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate, setSelectedLevel, clearSelectedLevel]);
+
+  return (
+    <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-900">Preparing your workspace...</h1>
+        <p className="mt-2 text-sm text-slate-600">Routing you based on your assigned schools, role, and categories.</p>
+        {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function SchoolSelectionRoutePage() {
+  const navigate = useNavigate();
+  const { setSelectedLevel, clearSelectedLevel } = useSelectedLevel();
+
+  const [schools, setSchools] = useState<StaffSchoolAssignment[]>([]);
+  const [isGeneratingToken, setIsGeneratingToken] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(postLoginPayloadKey);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored) as LoginResponseShape;
+      setSchools(getCompletedStaffSchools(Array.isArray(parsed.data?.schools) ? parsed.data?.schools : []));
+    } catch {
+      setSchools([]);
+    }
+  }, []);
+
+  const handleSchoolSelect = async (school: StaffSchoolAssignment) => {
+    setError(null);
+    if (!school.school_id) {
+      setError('Selected school is missing an ID.');
+      return;
+    }
+
+    setIsGeneratingToken(true);
+
+    localStorage.setItem(selectedSchoolAssignmentKey, JSON.stringify(school));
+    if (typeof school.role === 'string') {
+      localStorage.setItem(selectedSchoolRoleKey, school.role);
+    }
+
+    try {
+      setCurrentSchoolId(school.school_id);
+      await generateSchoolToken(school.school_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate school token.');
+      setIsGeneratingToken(false);
+      return;
+    }
+
+    const categories = sortCategories(school.categories || []);
+    if (categories.length > 1) {
+      setIsGeneratingToken(false);
+      navigate(`/select-category?schoolId=${encodeURIComponent(school.school_id || '')}`);
+      return;
+    }
+
+    if (categories.length === 1 && categories[0].uuid) {
+      setSelectedLevel({ levelUuid: categories[0].uuid, levelName: categories[0].name });
+      setCurrentLevelId(categories[0].uuid);
+    } else {
+      clearSelectedLevel();
+    }
+
+    setIsGeneratingToken(false);
+    navigate('/dashboard');
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">Select School</h1>
+        <p className="mt-2 text-sm text-slate-600">Choose a school assignment to continue.</p>
+        {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {schools.map((school) => (
+            <button
+              key={`${school.school_id}-${school.role}`}
+              type="button"
+              onClick={() => handleSchoolSelect(school)}
+              disabled={isGeneratingToken}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-4 text-left transition hover:border-blue-500 hover:bg-blue-50"
+            >
+              <p className="text-sm text-slate-500">{school.role || 'staff'}</p>
+              <p className="mt-1 font-medium text-slate-900">{school.school_name || school.school_id || 'School'}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StudentSelectionRoutePage() {
+  const navigate = useNavigate();
+  const [students, setStudents] = useState<LoginStudent[]>([]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(postLoginPayloadKey);
+    if (!stored) return;
+
+    try {
+      const parsed = JSON.parse(stored) as LoginResponseShape;
+      setStudents(Array.isArray(parsed.data?.students) ? parsed.data?.students : []);
+    } catch {
+      setStudents([]);
+    }
+  }, []);
+
+  const handleStudentSelect = (student: LoginStudent) => {
+    const studentId = getStudentId(student);
+    if (!studentId) return;
+
+    localStorage.setItem(selectedStudentKey, JSON.stringify(student));
+    navigate(`/guardian/${encodeURIComponent(studentId)}`);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">Select Student</h1>
+        <p className="mt-2 text-sm text-slate-600">Choose a student profile to continue to guardian dashboard.</p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {students.map((student) => {
+            const studentId = getStudentId(student);
+            return (
+              <button
+                key={studentId || getStudentDisplayName(student)}
+                type="button"
+                onClick={() => handleStudentSelect(student)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-4 text-left transition hover:border-blue-500 hover:bg-blue-50"
+              >
+                <p className="font-medium text-slate-900">{getStudentDisplayName(student)}</p>
+                <p className="mt-1 text-sm text-slate-500">{getStudentClassName(student)}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategorySelectionRoutePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { setSelectedLevel } = useSelectedLevel();
+
+  const [categories, setCategories] = useState<StaffCategory[]>([]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const schoolId = searchParams.get('schoolId');
+
+    const selectedSchoolRaw = localStorage.getItem(selectedSchoolAssignmentKey);
+    const snapshotRaw = localStorage.getItem(postLoginPayloadKey);
+
+    let school: StaffSchoolAssignment | null = null;
+
+    if (selectedSchoolRaw) {
+      try {
+        const selectedSchool = JSON.parse(selectedSchoolRaw) as StaffSchoolAssignment;
+        if (!schoolId || selectedSchool.school_id === schoolId) {
+          school = selectedSchool;
+        }
+      } catch {
+        school = null;
+      }
+    }
+
+    if (!school && snapshotRaw) {
+      try {
+        const parsed = JSON.parse(snapshotRaw) as LoginResponseShape;
+        const schools = getCompletedStaffSchools(Array.isArray(parsed.data?.schools) ? parsed.data?.schools : []);
+        school = schools.find((entry) => entry.school_id === schoolId) || schools[0] || null;
+      } catch {
+        school = null;
+      }
+    }
+
+    setCategories(sortCategories(school?.categories || []));
+  }, [location.search]);
+
+  const handleCategorySelect = (category: StaffCategory) => {
+    setSelectedLevel({ levelUuid: category.uuid, levelName: category.name });
+    setCurrentLevelId(category.uuid);
+    navigate(`/dashboard?categoryUuid=${encodeURIComponent(category.uuid)}`);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">Select Category</h1>
+        <p className="mt-2 text-sm text-slate-600">Choose which category/level context to open.</p>
+
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {categories.map((category) => (
+            <button
+              key={category.uuid}
+              type="button"
+              onClick={() => handleCategorySelect(category)}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-4 text-left transition hover:border-blue-500 hover:bg-blue-50"
+            >
+              <p className="text-sm text-slate-500">Level {category.categoryOrder ?? '-'}</p>
+              <p className="mt-1 font-medium text-slate-900">{category.name}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AppShell() {
+  const navigate = useNavigate();
   const location = useLocation();
   const { selectedLevel } = useSelectedLevel();
   const [isDark, setIsDark] = useState(false);
   const [currentRole, setCurrentRole] = useState<AppRole>(() => {
+    const storedSchoolRole = localStorage.getItem(selectedSchoolRoleKey);
+    if (typeof storedSchoolRole === 'string') {
+      const normalizedStoredRole = normalizeRoleValue(storedSchoolRole);
+      if (normalizedStoredRole) return normalizedStoredRole;
+    }
+
     const token = getStoredAuthToken();
     const payload = token ? (decodeAuthTokenPayload(token) as Record<string, unknown> | null) : null;
     return getAppRoleFromTokenPayload(payload) ?? 'parent';
@@ -199,7 +609,33 @@ function AppShell() {
   const [selectedChild, setSelectedChild] = useState('Sarah Johnson');
 
   useEffect(() => {
+    syncApiTokensFromStorage();
+  }, []);
+
+  useEffect(() => {
     if (!location.pathname.startsWith('/dashboard')) return;
+
+    const currentSchoolId = getCurrentSchoolId();
+    const schoolToken = getSchoolToken();
+
+    if (!currentSchoolId || schoolToken) return;
+
+    generateSchoolToken(currentSchoolId).catch(() => {
+      navigate('/select-school', { replace: true });
+    });
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/dashboard')) return;
+
+    const storedSchoolRole = localStorage.getItem(selectedSchoolRoleKey);
+    if (typeof storedSchoolRole === 'string') {
+      const normalizedStoredRole = normalizeRoleValue(storedSchoolRole);
+      if (normalizedStoredRole) {
+        setCurrentRole(normalizedStoredRole);
+        return;
+      }
+    }
 
     const token = getStoredAuthToken();
     const payload = token ? (decodeAuthTokenPayload(token) as Record<string, unknown> | null) : null;
@@ -239,10 +675,6 @@ function AppShell() {
   };
 
   const renderDashboard = () => {
-    if (location.pathname === '/dashboard' && selectedLevel) {
-      return <PrincipalDashboard />;
-    }
-
     switch (currentRole) {
       case 'parent':
         return <ParentDashboard />;
@@ -268,7 +700,12 @@ function AppShell() {
     location.pathname.startsWith('/auth') ||
     location.pathname.startsWith('/onboarding') ||
     location.pathname.startsWith('/setup') ||
-    location.pathname.startsWith('/select-level');
+    location.pathname.startsWith('/select-level') ||
+    location.pathname.startsWith('/select-school') ||
+    location.pathname.startsWith('/select-student') ||
+    location.pathname.startsWith('/select-category') ||
+    location.pathname.startsWith('/post-login') ||
+    location.pathname.startsWith('/no-access');
 
   if (isAuthRoute) {
     return (
@@ -286,6 +723,11 @@ function AppShell() {
           <Route path="/setup/term" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
           <Route path="/setup/levels" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
           <Route path="/setup/classes" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
+          <Route path="/post-login" element={<PostLoginRouterPage />} />
+          <Route path="/select-school" element={<SchoolSelectionRoutePage />} />
+          <Route path="/select-student" element={<StudentSelectionRoutePage />} />
+          <Route path="/select-category" element={<CategorySelectionRoutePage />} />
+          <Route path="/no-access" element={<NoAccessPage />} />
           <Route path="/select-level" element={<SelectLevelPage />} />
           <Route path="/auth/select-level" element={<SchoolSelectionPage />} />
           <Route path="/auth/select-school" element={<SchoolSelectionPage />} />
@@ -339,6 +781,7 @@ function AppShell() {
           <Routes>
             <Route path="/" element={renderDashboard()} />
             <Route path="/dashboard" element={renderDashboard()} />
+            <Route path="/guardian/:studentId" element={<ParentDashboard />} />
             <Route path="/admin/classes/:classId" element={<ClassDetailView />} />
             <Route path="/admin/classes/:classId/students/:studentId" element={<ClassStudentProfileView />} />
             <Route path="/admin/classes/:classId/students/:studentId/subjects/:subjectId" element={<ClassSubjectAnalysisView />} />

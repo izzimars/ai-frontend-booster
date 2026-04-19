@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { globalApi, getGeneralToken, setGeneralToken, syncApiTokensFromStorage } from '../services/apiClient';
 
 export type AuthTokenPayload = {
   exp?: number;
@@ -15,7 +15,13 @@ export type AuthTokenPayload = {
 
 const authTokenKey = 'authToken';
 
-export const getStoredAuthToken = () => localStorage.getItem(authTokenKey);
+export const getStoredAuthToken = () => getGeneralToken();
+
+export const setStoredAuthToken = (token: string) => {
+  localStorage.setItem(authTokenKey, token);
+  setGeneralToken(token);
+  syncApiTokensFromStorage();
+};
 
 export const decodeAuthTokenPayload = (token: string): AuthTokenPayload | null => {
   try {
@@ -42,16 +48,4 @@ export const hasValidAuthToken = () => {
   return payload.exp > nowInSeconds;
 };
 
-export const apiClient = axios.create({
-  baseURL: 'http://localhost:30000/api/v1',
-  headers: { 'Content-Type': 'application/json' },
-});
-
-// Automatically attach token to every request if it exists
-apiClient.interceptors.request.use((config) => {
-  const token = getStoredAuthToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+export const apiClient = globalApi;

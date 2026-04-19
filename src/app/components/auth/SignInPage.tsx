@@ -3,27 +3,11 @@ import { AxiosError } from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react';
 import { AuthErrorAlert } from './AuthErrorAlert';
-import { apiClient, decodeAuthTokenPayload } from '../../../api/client';
+import { apiClient, decodeAuthTokenPayload, setStoredAuthToken } from '../../../api/client';
 
 type SignInFormState = {
   email: string;
   password: string;
-};
-
-const mapSetupStageToRoute = (setupStage: string | undefined | null) => {
-  switch (setupStage) {
-    case 'pending':
-      return '/setup/session';
-    case 'session_created':
-      return '/setup/term';
-    case 'term_created':
-      return '/setup/levels';
-    case 'level_created':
-    case 'levels_created':
-      return '/setup/classes';
-    default:
-      return '/setup/session';
-  }
 };
 
 const normalizeSetupStage = (setupStage: unknown): string | null => {
@@ -85,7 +69,7 @@ export function SignInPage() {
 
       const token = response.data?.token || response.data?.accessToken || response.data?.data?.token;
       if (token) {
-        localStorage.setItem('authToken', String(token));
+        setStoredAuthToken(String(token));
       }
 
       if (!token) {
@@ -116,14 +100,8 @@ export function SignInPage() {
         localStorage.setItem('setup_stage', setupStage);
       }
 
-      const hasStoredLevelSelection = Boolean(localStorage.getItem('selected-school-level'));
-
-      if (hasStoredLevelSelection) {
-        navigate('/dashboard');
-        return;
-      }
-
-      navigate(mapSetupStageToRoute(setupStage));
+      localStorage.setItem('post-login-response', JSON.stringify(response.data));
+      navigate('/post-login');
     } catch (error: unknown) {
       const axiosError = error as AxiosError<{ message?: string }>;
       const statusCode = axiosError.response?.status;
