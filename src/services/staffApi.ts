@@ -94,22 +94,66 @@ const normalizeLevelIds = (raw: unknown, levels: StaffLevel[]): string[] => {
 const normalizeStaffUser = (raw: unknown): StaffUser => {
   const record = raw as Record<string, unknown>;
   const levels = normalizeLevels(record.levels);
-  const firstName = String(record.firstName || record.firstname || '').trim();
-  const lastName = String(record.lastName || record.lastname || '').trim();
+  const firstName = String(record.firstName || record.firstname || record.first_name || '').trim();
+  const lastName = String(record.lastName || record.lastname || record.last_name || '').trim();
   const fallbackName = String(record.name || '').trim();
   const [fallbackFirst = '', ...fallbackLast] = fallbackName.split(' ');
+  const userRecord = (record.user && typeof record.user === 'object' ? record.user as Record<string, unknown> : null);
+  const email = String(record.email || userRecord?.email || '').trim();
+  const levelIds = normalizeLevelIds(record.levelIds ?? record.level_ids, levels);
 
   return {
-    id: String(record.id || record.staffId || record._id || ''),
+    id: String(record.id || record.uuid || record.staffId || record.staff_id || record._id || ''),
     firstName: firstName || fallbackFirst,
     lastName: lastName || fallbackLast.join(' '),
-    email: String(record.email || ''),
-    phoneNumber: record.phoneNumber ? String(record.phoneNumber) : undefined,
+    email,
+    phoneNumber: record.phoneNumber ? String(record.phoneNumber) : record.phone ? String(record.phone) : undefined,
     role: normalizeRole(record.role),
     status: normalizeStatus(record.status),
     levels,
-    levelIds: normalizeLevelIds(record.levelIds, levels),
+    levelIds,
   };
+};
+
+const extractStaffCollection = (payload: unknown): unknown[] => {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+
+  const record = payload as Record<string, unknown>;
+  const candidates: unknown[] = [
+    record.data,
+    record.users,
+    record.staff,
+    record.items,
+    record.results,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (candidate && typeof candidate === 'object') {
+      const nested = candidate as Record<string, unknown>;
+      const nestedCandidates = [nested.data, nested.users, nested.staff, nested.items, nested.results];
+      for (const nestedCandidate of nestedCandidates) {
+        if (Array.isArray(nestedCandidate)) return nestedCandidate;
+      }
+    }
+  }
+
+  return [];
+};
+
+const extractStaffRecord = (payload: unknown): unknown => {
+  if (!payload || typeof payload !== 'object') return payload;
+
+  const record = payload as Record<string, unknown>;
+  const directCandidates: unknown[] = [record.user, record.staff, record.data];
+  for (const candidate of directCandidates) {
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return payload;
 };
 
 const request = async <T>(path: string, options?: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown; params?: Record<string, string | undefined> }): Promise<T> => {
@@ -135,8 +179,8 @@ const requestWithFallback = async <T>(paths: string[], options?: { method?: 'GET
 };
 
 export const listStaff = async (levelId: string): Promise<StaffUser[]> => {
-  const payload = await request<unknown[]>(`/staff/${encodeURIComponent(levelId)}`);
-  return (Array.isArray(payload) ? payload : []).map(normalizeStaffUser).filter((item) => item.id);
+  const payload = await request<unknown>(`/staff/${encodeURIComponent(levelId)}`);
+  return extractStaffCollection(payload).map(normalizeStaffUser).filter((item) => item.id);
 };
 
 export const inviteStaff = async (levelId: string, body: InviteStaffPayload): Promise<StaffUser> => {
@@ -144,7 +188,7 @@ export const inviteStaff = async (levelId: string, body: InviteStaffPayload): Pr
     method: 'POST',
     body,
   });
-  return normalizeStaffUser(payload);
+  return normalizeStaffUser(extractStaffRecord(payload));
 };
 
 export const updateStaffInfo = async (staffId: string, body: UpdateStaffInfoPayload): Promise<StaffUser> => {
