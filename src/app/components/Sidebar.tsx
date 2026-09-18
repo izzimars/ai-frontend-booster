@@ -1,5 +1,8 @@
-import { Home, BookOpen, ClipboardCheck, DollarSign, Users, Shield, Heart, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, BookOpen, ClipboardCheck, Users, Shield, Calendar, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { logout } from '../../services/authService';
+import { clearAllAuthTokens } from '../../services/apiClient';
 
 interface SidebarProps {
   role: string;
@@ -8,40 +11,29 @@ interface SidebarProps {
 }
 
 export function Sidebar({ role, currentView, onNavigate }: SidebarProps) {
+  const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const menuItems: Record<string, Array<{ id: string; label: string; icon: any }>> = {
-    parent: [
+    proprietor: [
       { id: 'overview', label: 'Dashboard', icon: Home },
-      { id: 'performance', label: 'Performance', icon: ClipboardCheck },
-      { id: 'medical', label: 'Medical', icon: Heart },
-    ],
-    teacher: [
-      { id: 'overview', label: 'Dashboard', icon: Home },
-      { id: 'syllabus', label: 'Syllabus', icon: BookOpen },
-      { id: 'questions', label: 'Questions', icon: ClipboardCheck },
-    ],
-    principal: [
-      { id: 'overview', label: 'Overview', icon: Home },
-      { id: 'approvals', label: 'Approvals', icon: ClipboardCheck },
-      { id: 'analytics', label: 'Analytics', icon: Users },
-      { id: 'activity', label: 'Activity Monitor', icon: Shield },
-    ],
-    bursar: [
-      { id: 'overview', label: 'Dashboard', icon: Home },
-      { id: 'payments', label: 'Payments', icon: DollarSign },
+      { id: 'analytics', label: 'School Analytics', icon: Users },
     ],
     admin: [
       { id: 'overview', label: 'Dashboard', icon: Home },
       { id: 'users', label: 'Users', icon: Users },
       { id: 'settings', label: 'Settings', icon: Shield },
     ],
-    gate: [
-      { id: 'overview', label: 'Pickup Verification', icon: Shield },
-    ],
-    nurse: [
+    teacher: [
       { id: 'overview', label: 'Dashboard', icon: Home },
-      { id: 'medications', label: 'Medications', icon: Heart },
+      { id: 'syllabus', label: 'Syllabus', icon: BookOpen },
+      { id: 'questions', label: 'Questions', icon: ClipboardCheck },
+    ],
+    secretary: [
+      { id: 'overview', label: 'Dashboard', icon: Home },
+      { id: 'classes', label: 'Classes', icon: Users },
+      { id: 'calendar', label: 'Academic Calendar', icon: Calendar },
+      { id: 'settings', label: 'Settings', icon: Shield },
     ],
   };
 
@@ -83,7 +75,14 @@ export function Sidebar({ role, currentView, onNavigate }: SidebarProps) {
       </nav>
 
       <div className="p-4 border-t border-sidebar-border">
-        <button className="w-full flex items-center gap-3 p-3 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent">
+        <button
+          onClick={async () => {
+            try { await logout(); } catch { void 0; }
+            clearAllAuthTokens();
+            navigate('/auth/login', { replace: true });
+          }}
+          className="w-full flex items-center gap-3 p-3 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent"
+        >
           <LogOut size={20} />
           {!isCollapsed && <span>Logout</span>}
         </button>

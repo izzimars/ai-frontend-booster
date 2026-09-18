@@ -101,7 +101,7 @@ type AuditLogEntry = {
   id: number;
   timestamp: string;
   actorName: string;
-  actorRole: 'admin' | 'principal' | 'teacher' | 'bursar' | 'parent' | 'student';
+  actorRole: 'proprietor' | 'admin' | 'teacher' | 'secretary' | 'bursar' | 'guardian' | 'student';
   module: 'syllabus' | 'lesson_notes' | 'fees' | 'results' | 'users' | 'settings' | 'assessments' | 'medical' | 'security';
   action: string;
   description: string;
@@ -113,7 +113,7 @@ type AuditLogEntry = {
   };
 };
 
-type StaffRole = 'Admin' | 'Principal' | 'Teacher' | 'Bursar' | 'Gate Staff' | 'School Nurse';
+type StaffRole = 'Proprietor' | 'Admin' | 'Teacher' | 'Secretary' | 'Bursar';
 type StaffStatus = 'active' | 'inactive' | 'pending_invitation';
 
 type StaffMember = {
@@ -379,13 +379,13 @@ export const staff: StaffMember[] = [
   { id: 1, name: 'Mrs. Johnson', role: 'Teacher', email: 'johnson@smfa.edu', status: 'active', lastActive: '2026-04-09T08:20:00' },
   { id: 2, name: 'Mr. Thompson', role: 'Teacher', email: 'thompson@smfa.edu', status: 'active', lastActive: '2026-04-09T09:10:00' },
   { id: 3, name: 'Mrs. Davis', role: 'Teacher', email: 'davis@smfa.edu', status: 'active', lastActive: '2026-04-08T16:40:00' },
-  { id: 4, name: 'Mr. Brown', role: 'Principal', email: 'brown@smfa.edu', status: 'active', lastActive: '2026-04-09T07:50:00' },
+  { id: 4, name: 'Mr. Brown', role: 'Proprietor', email: 'brown@smfa.edu', status: 'active', lastActive: '2026-04-09T07:50:00' },
   { id: 5, name: 'Ms. Lee', role: 'Bursar', email: 'lee@smfa.edu', status: 'inactive', lastActive: '2026-03-20T12:00:00' },
   { id: 6, name: 'Mrs. Stella Grant', role: 'Admin', email: 'stella.grant@smfa.edu', status: 'active', lastActive: '2026-04-09T09:42:00' },
-  { id: 7, name: 'Mr. Kevin Jude', role: 'Gate Staff', email: 'kevin.jude@smfa.edu', status: 'pending_invitation', lastActive: null },
+  { id: 7, name: 'Mr. Kevin Jude', role: 'Secretary', email: 'kevin.jude@smfa.edu', status: 'pending_invitation', lastActive: null },
 ];
 
-const staffRoleOptions: StaffRole[] = ['Teacher', 'Principal', 'Bursar', 'Admin', 'Gate Staff', 'School Nurse'];
+const staffRoleOptions: StaffRole[] = ['Proprietor', 'Admin', 'Teacher', 'Secretary', 'Bursar'];
 
 // Feature flag audit trail
 const flagAudit = [
@@ -650,19 +650,19 @@ const auditLogs: AuditLogEntry[] = [
     actorRole: 'admin',
     module: 'users',
     action: 'Role Updated for User #204',
-    description: 'Changed role from Teacher to Principal.',
+    description: 'Changed role from Teacher to Proprietor.',
     riskLevel: 'high',
     ipAddress: '197.210.55.19',
     metadata: {
       before: { userId: 204, role: 'Teacher', permissions: ['grade.submit'] },
-      after: { userId: 204, role: 'Principal', permissions: ['grade.submit', 'syllabus.approve', 'results.release'] },
+      after: { userId: 204, role: 'Proprietor', permissions: ['grade.submit', 'syllabus.approve', 'results.release'] },
     },
   },
   {
     id: 2,
     timestamp: '2026-04-09T09:41:08',
     actorName: 'Mr. Brown',
-    actorRole: 'principal',
+    actorRole: 'proprietor',
     module: 'syllabus',
     action: 'Approved Syllabus Week 3',
     description: 'Math 10A Week 3 approved after revision.',
@@ -721,7 +721,7 @@ const auditLogs: AuditLogEntry[] = [
   {
     id: 6,
     timestamp: '2026-04-08T12:44:20',
-    actorName: 'School Nurse',
+    actorName: 'Mrs. Danjuma',
     actorRole: 'teacher',
     module: 'medical',
     action: 'Updated Medication Log',
@@ -737,7 +737,7 @@ const auditLogs: AuditLogEntry[] = [
     id: 7,
     timestamp: '2026-04-08T11:07:12',
     actorName: 'Mr. Brown',
-    actorRole: 'principal',
+    actorRole: 'proprietor',
     module: 'results',
     action: 'Released Term Results',
     description: 'Term 3 consolidated results published to parent portal.',
@@ -1039,7 +1039,7 @@ const lessonNotesSeed: AdminLessonNote[] = [
 ];
 
 // Available roles for filtering
-const roles = ['admin', 'principal', 'teacher', 'bursar', 'parent', 'student'];
+const roles = ['proprietor', 'admin', 'teacher', 'secretary', 'bursar', 'guardian'];
 const modules = ['syllabus', 'lesson_notes', 'fees', 'results', 'users', 'settings', 'assessments', 'medical', 'security'];
 
 export function AdminDashboard() {
@@ -1769,7 +1769,7 @@ export function AdminDashboard() {
   const roleBadgeClassName = (role: StaffRole) => {
     if (role === 'Teacher') return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-200';
     if (role === 'Bursar') return 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-200';
-    if (role === 'Principal') return 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-200';
+    if (role === 'Proprietor') return 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-200';
     if (role === 'Admin') return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-200';
     return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200';
   };

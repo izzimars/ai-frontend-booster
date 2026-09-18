@@ -1,4 +1,4 @@
-import { globalApi, getGeneralToken, setGeneralToken, syncApiTokensFromStorage } from '../services/apiClient';
+import { getGeneralToken, globalApi, setGeneralToken, setStoredRefreshToken, syncApiTokensFromStorage } from '../services/apiClient';
 
 export type AuthTokenPayload = {
   exp?: number;
@@ -10,6 +10,8 @@ export type AuthTokenPayload = {
   is_verified?: boolean;
   isTemporaryPassword?: boolean;
   is_temporary_password?: boolean;
+  setup_stage?: string;
+  setupStage?: string;
   [key: string]: unknown;
 };
 
@@ -17,9 +19,12 @@ const authTokenKey = 'authToken';
 
 export const getStoredAuthToken = () => getGeneralToken();
 
-export const setStoredAuthToken = (token: string) => {
+export const setStoredAuthToken = (token: string, refreshToken?: string) => {
   localStorage.setItem(authTokenKey, token);
   setGeneralToken(token);
+  if (refreshToken) {
+    setStoredRefreshToken(refreshToken);
+  }
   syncApiTokensFromStorage();
 };
 

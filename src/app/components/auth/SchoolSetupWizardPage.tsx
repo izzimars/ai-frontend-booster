@@ -5,6 +5,7 @@ import { AuthLayout } from './AuthLayout';
 import { AuthErrorAlert } from './AuthErrorAlert';
 import { Stepper, type SetupStage, mapSetupStageToStepIndex } from './Stepper';
 import { apiClient, decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '../../../api/client';
+import { getOnboardingRoute } from '../../auth/setupRoutes';
 
 type WizardStep = 0 | 1 | 2 | 3 | 4;
 
@@ -125,21 +126,6 @@ const getStepFourStageValue = (setupStage: string | null | undefined) => {
       return setupStage;
     default:
       return 'levels_created';
-  }
-};
-
-const getPathForStep = (step: WizardStep): string => {
-  switch (step) {
-    case 1:
-      return '/setup/session';
-    case 2:
-      return '/setup/term';
-    case 3:
-      return '/setup/levels';
-    case 4:
-      return '/setup/classes';
-    default:
-      return '/setup/session';
   }
 };
 
@@ -301,7 +287,7 @@ export function SchoolSetupWizardPage() {
   }, [navigate]);
 
   useEffect(() => {
-    const targetPath = getPathForStep(currentStep);
+    const targetPath = getOnboardingRoute(setupStage);
     if (location.pathname !== targetPath) {
       navigate(targetPath, { replace: true });
     }
@@ -472,7 +458,7 @@ export function SchoolSetupWizardPage() {
       setSuccessMessage('Session created successfully. Redirecting to term setup...');
       setIsRedirectingToTerm(true);
       setCurrentStep(2);
-      navigate('/onboarding/terms', { replace: true });
+      navigate(getOnboardingRoute('session_created'), { replace: true });
     } catch (error: unknown) {
       setError(extractErrorMessage(error, 'Unable to create academic session.'));
     } finally {
@@ -524,7 +510,7 @@ export function SchoolSetupWizardPage() {
 
       localStorage.setItem(setupStageKey, 'term_created');
       setCurrentStep(3);
-      navigate('/setup/levels', { replace: true });
+      navigate(getOnboardingRoute('term_created'), { replace: true });
     } catch (error: unknown) {
       setError(extractErrorMessage(error, 'Unable to create term configuration.'));
     } finally {
@@ -574,7 +560,7 @@ export function SchoolSetupWizardPage() {
       setCreatedLevels([]);
       setSelectedClassLevelId('');
       setCurrentStep(4);
-      navigate('/setup/classes', { replace: true });
+      navigate(getOnboardingRoute('level_created'), { replace: true });
     } catch (error: unknown) {
       setError(extractErrorMessage(error, 'Unable to create selected school levels.'));
     } finally {

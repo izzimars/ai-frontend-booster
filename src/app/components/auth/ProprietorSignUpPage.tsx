@@ -5,7 +5,7 @@ import { AuthLayout } from './AuthLayout';
 import { AuthErrorAlert } from './AuthErrorAlert';
 import { apiClient } from '../../../api/client';
 
-type PrincipalSignUpForm = {
+type ProprietorSignUpForm = {
   firstName: string;
   lastName: string;
   email: string;
@@ -14,7 +14,7 @@ type PrincipalSignUpForm = {
   password: string;
 };
 
-const emptyForm: PrincipalSignUpForm = {
+const emptyForm: ProprietorSignUpForm = {
   firstName: '',
   lastName: '',
   email: '',
@@ -59,9 +59,9 @@ const normalizeNigerianPhone = (value: string) => {
 
 const pendingVerificationEmailKey = 'pending_verification_email';
 
-export function PrincipalSignUpPage() {
+export function ProprietorSignUpPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState<PrincipalSignUpForm>(emptyForm);
+  const [form, setForm] = useState<ProprietorSignUpForm>(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,7 +127,7 @@ export function PrincipalSignUpPage() {
 
   return (
     <AuthLayout
-      title="Principal Sign Up"
+      title="Proprietor Sign Up"
       subtitle="Create your school leadership account to begin onboarding."
       footer={
         <p>
@@ -141,9 +141,9 @@ export function PrincipalSignUpPage() {
       <form className="space-y-5" onSubmit={handleSubmit}>
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-800" htmlFor="principal-first-name">First Name</label>
+            <label className="text-sm font-medium text-slate-800" htmlFor="proprietor-first-name">First Name</label>
             <input
-              id="principal-first-name"
+              id="proprietor-first-name"
               type="text"
               required
               value={form.firstName}
@@ -157,9 +157,9 @@ export function PrincipalSignUpPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-800" htmlFor="principal-last-name">Last Name</label>
+            <label className="text-sm font-medium text-slate-800" htmlFor="proprietor-last-name">Last Name</label>
             <input
-              id="principal-last-name"
+              id="proprietor-last-name"
               type="text"
               required
               value={form.lastName}
@@ -174,9 +174,9 @@ export function PrincipalSignUpPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-800" htmlFor="principal-email">Email</label>
+          <label className="text-sm font-medium text-slate-800" htmlFor="proprietor-email">Email</label>
           <input
-            id="principal-email"
+            id="proprietor-email"
             type="email"
             required
             value={form.email}
@@ -190,13 +190,13 @@ export function PrincipalSignUpPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-800" htmlFor="principal-phone">Phone</label>
+          <label className="text-sm font-medium text-slate-800" htmlFor="proprietor-phone">Phone</label>
           <div className="flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-200">
             <span className="flex items-center border-r border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-600">
               +234
             </span>
             <input
-              id="principal-phone"
+              id="proprietor-phone"
               type="tel"
               required
               value={form.phone}
@@ -216,9 +216,9 @@ export function PrincipalSignUpPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-800" htmlFor="principal-school-name">School Name</label>
+          <label className="text-sm font-medium text-slate-800" htmlFor="proprietor-school-name">School Name</label>
           <input
-            id="principal-school-name"
+            id="proprietor-school-name"
             type="text"
             required
             value={form.schoolName}
@@ -232,9 +232,9 @@ export function PrincipalSignUpPage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-800" htmlFor="principal-password">Password</label>
+          <label className="text-sm font-medium text-slate-800" htmlFor="proprietor-password">Password</label>
           <input
-            id="principal-password"
+            id="proprietor-password"
             type="password"
             required
             value={form.password}

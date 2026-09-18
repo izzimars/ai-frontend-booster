@@ -148,14 +148,14 @@ interface ClassResultApproval {
   reason?: string;
 }
 
-interface ParentEngagementData {
-  totalParentsActivated: number;
+interface GuardianEngagementData {
+  totalGuardiansActivated: number;
   weeklyActive: number;
   dailyNewActivations: { date: string; count: number }[];
   classBreakdown: {
     className: string;
     totalStudents: number;
-    parentsLinked: number;
+    guardiansLinked: number;
     avgLoginsPerWeek: number;
   }[];
 }
@@ -300,8 +300,8 @@ const pendingLessonNotes: LessonNoteItem[] = [
 let allAuditLogs: AuditLogEntry[] = [
   { id: '1', timestamp: '2026-04-07T09:10:00Z', userId: 'bursar1', userName: 'Ms. Lee', userRole: 'bursar', module: 'fees', action: 'Fee receipt approved', riskLevel: 'low', details: 'Receipt #123 for Sarah Johnson - N45,000' },
   { id: '2', timestamp: '2026-04-07T08:42:00Z', userId: 'teacher1', userName: 'Mrs. Johnson', userRole: 'teacher', module: 'syllabus', action: 'Syllabus submitted', riskLevel: 'low', details: 'Math 10A Week 3' },
-  { id: '3', timestamp: '2026-04-06T13:03:00Z', userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal', module: 'results', action: 'Result release toggled', riskLevel: 'high', details: 'Term 3 results hidden', oldValue: 'visible', newValue: 'hidden' },
-  { id: '4', timestamp: '2026-04-05T11:20:00Z', userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal', module: 'fees', action: 'Fee policy changed', riskLevel: 'high', details: 'Gating set to partial', oldValue: 'full_access', newValue: 'partial_access' },
+  { id: '3', timestamp: '2026-04-06T13:03:00Z', userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor', module: 'results', action: 'Result release toggled', riskLevel: 'high', details: 'Term 3 results hidden', oldValue: 'visible', newValue: 'hidden' },
+  { id: '4', timestamp: '2026-04-05T11:20:00Z', userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor', module: 'fees', action: 'Fee policy changed', riskLevel: 'high', details: 'Gating set to partial', oldValue: 'full_access', newValue: 'partial_access' },
 ];
 
 // Result approval per class
@@ -313,8 +313,8 @@ const classResultApprovals: ClassResultApproval[] = [
 ];
 
 // Parent engagement mock data
-const parentEngagementData: ParentEngagementData = {
-  totalParentsActivated: 342,
+const guardianEngagementData: GuardianEngagementData = {
+  totalGuardiansActivated: 342,
   weeklyActive: 289,
   dailyNewActivations: [
     { date: '2026-03-10', count: 5 }, { date: '2026-03-11', count: 7 }, { date: '2026-03-12', count: 3 },
@@ -329,11 +329,11 @@ const parentEngagementData: ParentEngagementData = {
     { date: '2026-04-06', count: 7 }, { date: '2026-04-07', count: 9 }, { date: '2026-04-08', count: 5 },
   ],
   classBreakdown: [
-    { className: 'Grade 5A', totalStudents: 35, parentsLinked: 28, avgLoginsPerWeek: 3.2 },
-    { className: 'Grade 5B', totalStudents: 32, parentsLinked: 30, avgLoginsPerWeek: 4.1 },
-    { className: 'Grade 6A', totalStudents: 38, parentsLinked: 22, avgLoginsPerWeek: 2.5 },
-    { className: 'Grade 6B', totalStudents: 36, parentsLinked: 33, avgLoginsPerWeek: 3.9 },
-    { className: 'Grade 7A', totalStudents: 40, parentsLinked: 25, avgLoginsPerWeek: 2.1 },
+    { className: 'Grade 5A', totalStudents: 35, guardiansLinked: 28, avgLoginsPerWeek: 3.2 },
+    { className: 'Grade 5B', totalStudents: 32, guardiansLinked: 30, avgLoginsPerWeek: 4.1 },
+    { className: 'Grade 6A', totalStudents: 38, guardiansLinked: 22, avgLoginsPerWeek: 2.5 },
+    { className: 'Grade 6B', totalStudents: 36, guardiansLinked: 33, avgLoginsPerWeek: 3.9 },
+    { className: 'Grade 7A', totalStudents: 40, guardiansLinked: 25, avgLoginsPerWeek: 2.1 },
   ],
 };
 
@@ -527,7 +527,7 @@ if (typeof window !== 'undefined' && !localStorage.getItem('principal-audit-logs
 }
 
 // ========== MAIN COMPONENT ==========
-export function PrincipalDashboard() {
+export function ProprietorDashboard() {
   const [activeMainTab, setActiveMainTab] = useState<
     'fee' |
     'kpi' |
@@ -2003,7 +2003,7 @@ export function PrincipalDashboard() {
       }
     }
     addAuditLog({
-      userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+      userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
       module: approvalTab === 'syllabus' ? 'syllabus' : 'lessonNotes',
       action: `Approved ${approvalTab === 'syllabus' ? 'syllabus' : 'lesson note'}: ${selectedApprovalItem.title}`,
       riskLevel: 'low',
@@ -2037,7 +2037,7 @@ export function PrincipalDashboard() {
       }
     }
     addAuditLog({
-      userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+      userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
       module: approvalTab === 'syllabus' ? 'syllabus' : 'lessonNotes',
       action: `Rejected ${approvalTab === 'syllabus' ? 'syllabus' : 'lesson note'}: ${selectedApprovalItem.title}`,
       riskLevel: 'medium',
@@ -2055,7 +2055,7 @@ export function PrincipalDashboard() {
         // similar to single approve
       });
       addAuditLog({
-        userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+        userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
         module: approvalTab === 'syllabus' ? 'syllabus' : 'lessonNotes',
         action: `Batch approved ${selectedRows.length} items`,
         riskLevel: 'low',
@@ -2072,7 +2072,7 @@ export function PrincipalDashboard() {
     if (!reason) return;
     // apply to each
     addAuditLog({
-      userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+      userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
       module: approvalTab === 'syllabus' ? 'syllabus' : 'lessonNotes',
       action: `Batch rejected ${selectedRows.length} items`,
       riskLevel: 'medium',
@@ -2093,7 +2093,7 @@ export function PrincipalDashboard() {
     }
     setResultsReleased(!resultsReleased);
     addAuditLog({
-      userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+      userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
       module: 'result gating',
       action: `Result visibility toggled to ${!resultsReleased ? 'visible' : 'hidden'}`,
       riskLevel: 'high',
@@ -2105,7 +2105,7 @@ export function PrincipalDashboard() {
     const policy = { examStart: examStartDate, examEnd: examEndDate, feePolicy, updatedAt: new Date().toISOString(), updatedBy: 'principal1' };
     localStorage.setItem('resultGatePolicy', JSON.stringify(policy));
     addAuditLog({
-      userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+      userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
       module: 'result gating',
       action: 'Fee gating policy updated',
       riskLevel: 'high',
@@ -2173,7 +2173,7 @@ export function PrincipalDashboard() {
     if (action === 'approve') {
       setClassApprovals(prev => prev.map(c => c.className === cls.className ? { ...c, status: 'approved', lastUpdated: new Date().toISOString() } : c));
       addAuditLog({
-        userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+        userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
         module: 'result approval',
         action: `Approved results for class ${cls.className}`,
         riskLevel: 'medium',
@@ -2186,7 +2186,7 @@ export function PrincipalDashboard() {
       }
       setClassApprovals(prev => prev.map(c => c.className === cls.className ? { ...c, status: 'changes_requested', lastUpdated: new Date().toISOString(), reason: changeRequestReason } : c));
       addAuditLog({
-        userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+        userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
         module: 'result approval',
         action: `Requested changes for class ${cls.className}`,
         riskLevel: 'low',
@@ -2201,7 +2201,7 @@ export function PrincipalDashboard() {
     if (confirm('Approve all pending classes? This will release results according to the fee gating policy.')) {
       setClassApprovals(prev => prev.map(c => c.status === 'pending' ? { ...c, status: 'approved', lastUpdated: new Date().toISOString() } : c));
       addAuditLog({
-        userId: 'principal1', userName: 'Mr. Brown', userRole: 'principal',
+        userId: 'proprietor1', userName: 'Mr. Brown', userRole: 'proprietor',
         module: 'result approval',
         action: 'Approved all pending classes',
         riskLevel: 'high',
@@ -2300,7 +2300,7 @@ export function PrincipalDashboard() {
                       <td>{item.name}</td>
                       <td>{item.category}</td>
                       <td>{formatCurrency(item.amount)}</td>
-                      <td>{item.term} • {item.armId || item.classId ? `Arm ${item.armId || item.classId}` : 'All Arms'}</td>
+                      <td>{item.term} • {item.armId || item.classId ? `Class ${item.armId || item.classId}` : 'All Classes'}</td>
                       <td>{item.dueDate}</td>
                       <td>{item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : '—'}</td>
                       <td>
@@ -2352,7 +2352,7 @@ export function PrincipalDashboard() {
                         <p className="text-xs text-muted-foreground">{item.category}</p>
                       </td>
                       <td>{formatCurrency(item.amount)}</td>
-                      <td>{item.term} • {item.armId || item.classId ? `Arm ${item.armId || item.classId}` : 'All Arms'}</td>
+                      <td>{item.term} • {item.armId || item.classId ? `Class ${item.armId || item.classId}` : 'All Classes'}</td>
                       <td>{item.dueDate}</td>
                       <td><Badge variant={item.isCompulsory ? 'approved' : 'default'}>{item.isCompulsory ? 'Yes' : 'No'}</Badge></td>
                       <td><Badge variant={getStatusBadgeVariant(item.status)}>{item.status.replace('_', ' ')}</Badge></td>
@@ -2627,15 +2627,15 @@ export function PrincipalDashboard() {
       {activeMainTab === 'parentEngagement' && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="border rounded p-4 bg-gradient-to-br from-blue-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Parents Activated</span><Users size={18}/></div><p className="text-3xl font-bold">{parentEngagementData.totalParentsActivated}</p></div>
-            <div className="border rounded p-4 bg-gradient-to-br from-green-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Active Last 7 Days</span><Activity size={18}/></div><p className="text-3xl font-bold">{parentEngagementData.weeklyActive}</p></div>
-            <div className="border rounded p-4 bg-gradient-to-br from-purple-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Parent‑Student Ratio</span><UserCheck size={18}/></div><p className="text-3xl font-bold">{Math.round((parentEngagementData.totalParentsActivated / 342) * 100)}%</p></div>
+            <div className="border rounded p-4 bg-gradient-to-br from-blue-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Parents Activated</span><Users size={18}/></div><p className="text-3xl font-bold">{guardianEngagementData.totalGuardiansActivated}</p></div>
+            <div className="border rounded p-4 bg-gradient-to-br from-green-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Active Last 7 Days</span><Activity size={18}/></div><p className="text-3xl font-bold">{guardianEngagementData.weeklyActive}</p></div>
+            <div className="border rounded p-4 bg-gradient-to-br from-purple-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Parent‑Student Ratio</span><UserCheck size={18}/></div><p className="text-3xl font-bold">{Math.round((guardianEngagementData.totalGuardiansActivated / 342) * 100)}%</p></div>
             <div className="border rounded p-4 bg-gradient-to-br from-orange-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Avg Logins/Week</span><TrendingUp size={18}/></div><p className="text-3xl font-bold">3.2</p></div>
           </div>
           
           <Card title="New Parent Activations (Last 30 days)">
             <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={parentEngagementData.dailyNewActivations.slice(-30)}><CartesianGrid /><XAxis dataKey="date" tick={{fontSize:10}} /><YAxis /><Tooltip /><Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} /></LineChart>
+              <LineChart data={guardianEngagementData.dailyNewActivations.slice(-30)}><CartesianGrid /><XAxis dataKey="date" tick={{fontSize:10}} /><YAxis /><Tooltip /><Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} /></LineChart>
             </ResponsiveContainer>
           </Card>
           
@@ -2644,10 +2644,10 @@ export function PrincipalDashboard() {
               <table className="w-full text-sm">
                 <thead><tr className="border-b"><th>Class</th><th># Students</th><th># Parents Linked</th><th>% Linked</th><th>Avg Logins/Week (7d)</th></tr></thead>
                 <tbody>
-                  {parentEngagementData.classBreakdown.map(c => (
+                  {guardianEngagementData.classBreakdown.map(c => (
                     <tr key={c.className} className="border-b">
-                      <td>{c.className}</td><td>{c.totalStudents}</td><td>{c.parentsLinked}</td>
-                      <td>{Math.round((c.parentsLinked/c.totalStudents)*100)}%</td>
+                      <td>{c.className}</td><td>{c.totalStudents}</td><td>{c.guardiansLinked}</td>
+                      <td>{Math.round((c.guardiansLinked/c.totalStudents)*100)}%</td>
                       <td>{c.avgLoginsPerWeek}</td>
                     </tr>
                   ))}
@@ -3808,7 +3808,7 @@ export function PrincipalDashboard() {
           <div className="space-y-2 text-sm">
             <p><strong>Category:</strong> {selectedFeeItemDetail.category}</p>
             <p><strong>Amount:</strong> {formatCurrency(selectedFeeItemDetail.amount)}</p>
-            <p><strong>Scope:</strong> {selectedFeeItemDetail.term} • {selectedFeeItemDetail.armId || selectedFeeItemDetail.classId ? `Arm ${selectedFeeItemDetail.armId || selectedFeeItemDetail.classId}` : 'All Arms'}</p>
+            <p><strong>Scope:</strong> {selectedFeeItemDetail.term} • {selectedFeeItemDetail.armId || selectedFeeItemDetail.classId ? `Class ${selectedFeeItemDetail.armId || selectedFeeItemDetail.classId}` : 'All Classes'}</p>
             <p><strong>Due Date:</strong> {selectedFeeItemDetail.dueDate}</p>
             <p><strong>Status:</strong> {selectedFeeItemDetail.status}</p>
             <p><strong>Submitted At:</strong> {selectedFeeItemDetail.submittedAt ? new Date(selectedFeeItemDetail.submittedAt).toLocaleString() : '-'}</p>

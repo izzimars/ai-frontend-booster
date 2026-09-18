@@ -1,6 +1,6 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { AxiosError } from 'axios';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react';
 import { AuthErrorAlert } from './AuthErrorAlert';
 import { apiClient, decodeAuthTokenPayload, setStoredAuthToken } from '../../../api/client';
@@ -29,13 +29,17 @@ const normalizeSetupStage = (setupStage: unknown): string | null => {
 
 export function SignInPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sessionExpired = searchParams.get('session') === 'expired';
+  const passwordReset = searchParams.get('reset') === 'success';
+
   const [form, setForm] = useState<SignInFormState>({
     email: '',
     password: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(passwordReset ? null : null);
 
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -68,8 +72,9 @@ export function SignInPage() {
       });
 
       const token = response.data?.token || response.data?.accessToken || response.data?.data?.token;
+      const refreshToken = response.data?.refreshToken || response.data?.refresh_token || response.data?.data?.refreshToken || response.data?.data?.refresh_token;
       if (token) {
-        setStoredAuthToken(String(token));
+        setStoredAuthToken(String(token), refreshToken ? String(refreshToken) : undefined);
       }
 
       if (!token) {
@@ -87,12 +92,12 @@ export function SignInPage() {
       const setupStage = normalizeSetupStage(responseSetupStage) ?? normalizeSetupStage(payloadSetupStage);
 
       if (isVerified === false) {
-        navigate('/auth/verify-otp');
+        navigate(`/auth/resend-activation?email=${encodeURIComponent(trimmedEmail)}`, { replace: true });
         return;
       }
 
       if (isTemporaryPassword === true) {
-        navigate('/reset-password');
+        navigate('/auth/change-password', { replace: true });
         return;
       }
 
@@ -125,6 +130,18 @@ export function SignInPage() {
           <h1 className="text-2xl font-semibold text-slate-900">Welcome back</h1>
           <p className="text-sm text-slate-600">Sign in to continue to your parent portal.</p>
         </div>
+
+        {sessionExpired ? (
+          <div className="mb-4 rounded-xl border border-flag-red/20 bg-flag-red/5 px-4 py-3 text-sm text-flag-red">
+            Your session expired. Please sign in again.
+          </div>
+        ) : null}
+
+        {passwordReset ? (
+          <div className="mb-4 rounded-xl border border-register-green/20 bg-register-green/5 px-4 py-3 text-sm text-register-green">
+            Your password has been reset. You can now sign in.
+          </div>
+        ) : null}
 
         <form className="space-y-5" onSubmit={handleSubmit}>
           <div className="space-y-2">
@@ -190,7 +207,7 @@ export function SignInPage() {
 
         <p className="mt-6 text-center text-sm text-slate-600">
           Need an account?{' '}
-          <Link className="font-medium text-blue-700 hover:text-blue-800" to="/auth/principal-sign-up">
+          <Link className="font-medium text-ink hover:text-ink/80" to="/auth/register">
             Sign up
           </Link>
         </p>

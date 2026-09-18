@@ -1,10 +1,10 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ParentDashboard } from './components/dashboards/ParentDashboard';
 import { TeacherDashboard } from './components/dashboards/TeacherDashboard';
 import type { TeacherDashboardTab } from './components/dashboards/TeacherDashboard';
-import { PrincipalDashboard } from './components/dashboards/PrincipalDashboard';
+import { ProprietorDashboard } from './components/dashboards/ProprietorDashboard';
 import { BursarDashboard } from './components/dashboards/BursarDashboard';
 import { AdminDashboard } from './components/dashboards/AdminDashboard';
 import { GateDashboard } from './components/dashboards/GateDashboard';
@@ -19,10 +19,16 @@ import { TeachingConsolePage } from './components/dashboards/TeachingConsolePage
 import { StudentDetailPage } from './components/dashboards/StudentDetailPage';
 import { AssessmentManagerPage } from './components/dashboards/AssessmentManagerPage';
 import { LessonEditorPage } from './components/dashboards/LessonEditorPage';
-import { PrincipalSignUpPage } from './components/auth/PrincipalSignUpPage';
-import { OtpVerificationPage } from './components/auth/OtpVerificationPage';
+import { RegisterPage } from './components/auth/RegisterPage';
+import { AccountHubPage } from './components/auth/AccountHubPage';
+import { SetPasswordPage } from './components/auth/SetPasswordPage';
+import { ResendActivationLinkPage } from './components/auth/ResendActivationLinkPage';
+import { SchoolOnboardingPage, TeacherOnboardingPage } from './components/auth/SchoolOnboardingPage';
+import { ForgotPasswordPage } from './components/auth/ForgotPasswordPage';
+import { ResetPasswordOtpPage } from './components/auth/ResetPasswordOtpPage';
+import { ChangePasswordPage } from './components/auth/ChangePasswordPage';
+import { GuardianOnboardingPage } from './components/auth/GuardianOnboardingPage';
 import { SignInPage } from './components/auth/SignInPage';
-import { SchoolSelectionPage } from './components/auth/SchoolSelectionPage';
 import { SchoolSetupWizardPage } from './components/auth/SchoolSetupWizardPage';
 import { SelectLevelPage } from './components/auth/SelectLevelPage';
 import { SelectedLevelProvider, useSelectedLevel } from './components/auth/LevelSelectionContext';
@@ -32,6 +38,8 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '../api/client';
 import { generateSchoolToken } from '../services/auth';
 import { getCurrentSchoolId, getSchoolToken, setCurrentLevelId, setCurrentSchoolId, syncApiTokensFromStorage } from '../services/apiClient';
+import { type AppRole, type StaffRole } from './auth/permissions';
+import { getOnboardingRoute, type SetupStage } from './auth/setupRoutes';
 
 type StaffCategory = {
   name: string;
@@ -72,16 +80,6 @@ type LoginResponseShape = {
   data?: LoginDataShape;
 };
 
-type SetupStage =
-  | 'pending'
-  | 'session_created'
-  | 'term_created'
-  | 'level_created'
-  | 'class_created'
-  | 'completed';
-
-type AppRole = 'parent' | 'teacher' | 'principal' | 'bursar' | 'admin' | 'gate' | 'nurse';
-
 const postLoginPayloadKey = 'post-login-response';
 const selectedSchoolAssignmentKey = 'selected-school-assignment';
 const selectedSchoolRoleKey = 'selected-school-role';
@@ -90,12 +88,12 @@ const selectedStudentKey = 'selected-student';
 const normalizeRoleValue = (value: string): AppRole | null => {
   const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
 
-  if (normalized === 'parent' || normalized === 'guardian') return 'parent';
+  if (normalized === 'parent' || normalized === 'guardian') return 'guardian';
   if (normalized === 'teacher') return 'teacher';
-  if (normalized === 'principal') return 'principal';
-  if (normalized === 'proprietor') return 'principal';
-  if (normalized === 'bursar' || normalized === 'accountant') return 'bursar';
+  if (normalized === 'proprietor' || normalized === 'principal') return 'proprietor';
   if (normalized === 'admin' || normalized === 'administrator') return 'admin';
+  if (normalized === 'secretary') return 'secretary';
+  if (normalized === 'bursar' || normalized === 'accountant') return 'bursar';
   if (normalized === 'gate' || normalized === 'gate_staff' || normalized === 'gatestaff') return 'gate';
   if (normalized === 'nurse' || normalized === 'school_nurse') return 'nurse';
 
@@ -160,24 +158,6 @@ const normalizeSetupStage = (stage: string | null | undefined): SetupStage | nul
   }
 };
 
-const getOnboardingRoute = (stage: SetupStage) => {
-  switch (stage) {
-    case 'pending':
-      return '/setup/session';
-    case 'session_created':
-      return '/setup/term';
-    case 'term_created':
-      return '/setup/levels';
-    case 'level_created':
-      return '/setup/classes';
-    case 'class_created':
-    case 'completed':
-      return '/dashboard';
-    default:
-      return '/setup/session';
-  }
-};
-
 const getCategoryOrder = (category: StaffCategory) => {
   if (typeof category.categoryOrder === 'number') return category.categoryOrder;
   return Number.MAX_SAFE_INTEGER;
@@ -230,14 +210,14 @@ export const getInitialRouteAfterLogin = (loginData: LoginDataShape): string => 
     }
   }
 
-  return '/no-access';
+  return '/auth/account-hub';
 };
 
 const setupPathByRoute = (pathname: string): string | null => {
-  if (pathname === '/setup/session' || pathname === '/auth/school-setup') return '/setup/session';
-  if (pathname === '/setup/term' || pathname === '/auth/school-setup/term' || pathname === '/onboarding/terms') return '/setup/term';
-  if (pathname === '/setup/levels') return '/setup/levels';
-  if (pathname === '/setup/classes') return '/setup/classes';
+  if (pathname === '/auth/setup/session') return '/auth/setup/session';
+  if (pathname === '/auth/setup/term') return '/auth/setup/term';
+  if (pathname === '/auth/setup/levels') return '/auth/setup/levels';
+  if (pathname === '/auth/setup/classes') return '/auth/setup/classes';
   return null;
 };
 
@@ -288,19 +268,6 @@ function OnboardingGuard({ children }: OnboardingGuardProps) {
   return <>{children}</>;
 }
 
-function NoAccessPage() {
-  return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
-      <div className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">No Access Assigned</h1>
-        <p className="mt-3 text-sm text-slate-600">
-          Your account does not currently have any staff schools or guardian students assigned.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function PostLoginRouterPage() {
   const navigate = useNavigate();
   const { setSelectedLevel, clearSelectedLevel } = useSelectedLevel();
@@ -328,7 +295,8 @@ function PostLoginRouterPage() {
       const data = parsed?.data || {};
       const initialRoute = getInitialRouteAfterLogin(data);
 
-      const schools = getCompletedStaffSchools(Array.isArray(data.schools) ? data.schools : []);
+      const allSchools = Array.isArray(data.schools) ? data.schools : [];
+      const schools = getCompletedStaffSchools(allSchools);
       const students = Array.isArray(data.students) ? data.students : [];
 
       if (schools.length === 1) {
@@ -349,6 +317,16 @@ function PostLoginRouterPage() {
         }
         if (categories.length === 0) {
           clearSelectedLevel();
+        }
+      } else if (schools.length === 0 && allSchools.length > 0) {
+        const onboardingSchool = allSchools[0];
+        if (onboardingSchool.school_id) {
+          localStorage.setItem(selectedSchoolAssignmentKey, JSON.stringify(onboardingSchool));
+          if (typeof onboardingSchool.role === 'string') {
+            localStorage.setItem(selectedSchoolRoleKey, onboardingSchool.role);
+          }
+          setCurrentSchoolId(onboardingSchool.school_id);
+          await generateSchoolToken(onboardingSchool.school_id);
         }
       }
 
@@ -383,11 +361,13 @@ function PostLoginRouterPage() {
 
 function SchoolSelectionRoutePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setSelectedLevel, clearSelectedLevel } = useSelectedLevel();
 
   const [schools, setSchools] = useState<StaffSchoolAssignment[]>([]);
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoSelectedSchoolId = useRef<string | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(postLoginPayloadKey);
@@ -442,6 +422,18 @@ function SchoolSelectionRoutePage() {
     navigate('/dashboard');
   };
 
+  useEffect(() => {
+    const schoolId = new URLSearchParams(location.search).get('schoolId');
+    if (!schoolId || !schools.length) return;
+    if (autoSelectedSchoolId.current === schoolId) return;
+
+    const requestedSchool = schools.find((school) => school.school_id === schoolId);
+    if (requestedSchool) {
+      autoSelectedSchoolId.current = schoolId;
+      void handleSchoolSelect(requestedSchool);
+    }
+  }, [location.search, schools]);
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
       <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -470,7 +462,9 @@ function SchoolSelectionRoutePage() {
 
 function StudentSelectionRoutePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [students, setStudents] = useState<LoginStudent[]>([]);
+  const autoSelectedStudentId = useRef<string | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(postLoginPayloadKey);
@@ -491,6 +485,18 @@ function StudentSelectionRoutePage() {
     localStorage.setItem(selectedStudentKey, JSON.stringify(student));
     navigate(`/guardian/${encodeURIComponent(studentId)}`);
   };
+
+  useEffect(() => {
+    const studentId = new URLSearchParams(location.search).get('studentId');
+    if (!studentId || !students.length) return;
+    if (autoSelectedStudentId.current === studentId) return;
+
+    const requestedStudent = students.find((student) => getStudentId(student) === studentId);
+    if (requestedStudent) {
+      autoSelectedStudentId.current = studentId;
+      handleStudentSelect(requestedStudent);
+    }
+  }, [location.search, students]);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
@@ -525,6 +531,7 @@ function CategorySelectionRoutePage() {
   const { setSelectedLevel } = useSelectedLevel();
 
   const [categories, setCategories] = useState<StaffCategory[]>([]);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
@@ -556,6 +563,12 @@ function CategorySelectionRoutePage() {
       }
     }
 
+    if (schoolId && !school) {
+      setAccessDenied(true);
+      return;
+    }
+
+    setAccessDenied(false);
     setCategories(sortCategories(school?.categories || []));
   }, [location.search]);
 
@@ -584,6 +597,12 @@ function CategorySelectionRoutePage() {
             </button>
           ))}
         </div>
+
+        {accessDenied && (
+          <p className="mt-4 text-sm text-flag-red">
+            You don't have access to the requested school.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -603,7 +622,7 @@ function AppShell() {
 
     const token = getStoredAuthToken();
     const payload = token ? (decodeAuthTokenPayload(token) as Record<string, unknown> | null) : null;
-    return getAppRoleFromTokenPayload(payload) ?? 'parent';
+    return getAppRoleFromTokenPayload(payload) ?? 'guardian';
   });
   const [currentView, setCurrentView] = useState('overview');
   const [selectedChild, setSelectedChild] = useState('Sarah Johnson');
@@ -647,11 +666,12 @@ function AppShell() {
   }, [location.pathname]);
 
   const roleData = {
-    parent: { name: 'Jane Johnson', notificationCount: 3 },
+    guardian: { name: 'Jane Johnson', notificationCount: 3 },
     teacher: { name: 'Mrs. Johnson', notificationCount: 5 },
-    principal: { name: 'Mr. Brown', notificationCount: 8 },
+    proprietor: { name: 'Mr. Brown', notificationCount: 8 },
     bursar: { name: 'Ms. Lee', notificationCount: 12 },
     admin: { name: 'Admin User', notificationCount: 2 },
+    secretary: { name: 'Mrs. Stella Grant', notificationCount: 4 },
     gate: { name: 'Gate Staff 1', notificationCount: 0 },
     nurse: { name: 'Nurse Williams', notificationCount: 4 },
   };
@@ -676,36 +696,37 @@ function AppShell() {
 
   const renderDashboard = () => {
     switch (currentRole) {
-      case 'parent':
-        return <ParentDashboard />;
-      case 'teacher':
-        return <TeacherDashboard activeTabOverride={mapTeacherViewToTab(currentView)} />;
-      case 'principal':
-        return <PrincipalDashboard />;
-      case 'bursar':
-        return <BursarDashboard />;
-      case 'admin':
-        return <AdminDashboard />;
-      case 'gate':
-        return <GateDashboard />;
-      case 'nurse':
-        return <NurseDashboard />;
-      default:
-        return <ParentDashboard />;
+       case 'guardian':
+         return <ParentDashboard />;
+       case 'teacher':
+         return <TeacherDashboard activeTabOverride={mapTeacherViewToTab(currentView)} />;
+       case 'proprietor':
+         return <ProprietorDashboard />;
+       case 'bursar':
+         return <BursarDashboard />;
+       case 'admin':
+         return <AdminDashboard />;
+       case 'secretary':
+         return <AdminDashboard />;
+       case 'gate':
+         return <GateDashboard />;
+       case 'nurse':
+         return <NurseDashboard />;
+       default:
+         return <ParentDashboard />;
     }
   };
 
   const isTeachingConsoleRoute = location.pathname.startsWith('/teaching-console/');
   const isAuthRoute =
     location.pathname.startsWith('/auth') ||
-    location.pathname.startsWith('/onboarding') ||
-    location.pathname.startsWith('/setup') ||
+    location.pathname.startsWith('/auth/setup') ||
     location.pathname.startsWith('/select-level') ||
     location.pathname.startsWith('/select-school') ||
     location.pathname.startsWith('/select-student') ||
     location.pathname.startsWith('/select-category') ||
     location.pathname.startsWith('/post-login') ||
-    location.pathname.startsWith('/no-access');
+    location.pathname.startsWith('/auth/account-hub');
 
   if (isAuthRoute) {
     return (
@@ -714,27 +735,44 @@ function AppShell() {
           <Route path="/auth" element={<SignInPage />} />
           <Route path="/auth/login" element={<SignInPage />} />
           <Route path="/auth/sign-in" element={<SignInPage />} />
-          <Route path="/auth/principal-sign-up" element={<PrincipalSignUpPage />} />
-          <Route path="/auth/verify-otp" element={<OtpVerificationPage />} />
-          <Route path="/auth/school-setup" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
-          <Route path="/auth/school-setup/term" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
-          <Route path="/onboarding/terms" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
-          <Route path="/setup/session" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
-          <Route path="/setup/term" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
-          <Route path="/setup/levels" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
-          <Route path="/setup/classes" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
+          <Route path="/auth/register" element={<RegisterPage />} />
+          <Route path="/auth/set-password" element={<SetPasswordPage />} />
+          <Route path="/auth/resend-activation" element={<ResendActivationLinkPage />} />
+          <Route path="/auth/onboarding/school" element={<SchoolOnboardingPage />} />
+          <Route path="/auth/onboarding/teacher" element={<TeacherOnboardingPage />} />
+          <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/auth/reset-password" element={<ResetPasswordOtpPage />} />
+          <Route path="/auth/change-password" element={<ChangePasswordPage />} />
+          <Route path="/auth/guardian-onboarding" element={<GuardianOnboardingPage />} />
+          <Route path="/auth/setup/session" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
+          <Route path="/auth/setup/term" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
+          <Route path="/auth/setup/levels" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
+          <Route path="/auth/setup/classes" element={<OnboardingGuard><SchoolSetupWizardPage /></OnboardingGuard>} />
           <Route path="/post-login" element={<PostLoginRouterPage />} />
           <Route path="/select-school" element={<SchoolSelectionRoutePage />} />
           <Route path="/select-student" element={<StudentSelectionRoutePage />} />
           <Route path="/select-category" element={<CategorySelectionRoutePage />} />
-          <Route path="/no-access" element={<NoAccessPage />} />
+          <Route path="/auth/account-hub" element={<AccountHubPage />} />
+          <Route path="/no-access" element={<Navigate to="/auth/account-hub" replace />} />
           <Route path="/select-level" element={<SelectLevelPage />} />
-          <Route path="/auth/select-level" element={<SchoolSelectionPage />} />
-          <Route path="/auth/select-school" element={<SchoolSelectionPage />} />
         </Routes>
         <Toaster position="top-right" richColors />
       </>
     );
+  }
+
+  const storedSetupStage = localStorage.getItem('setup_stage');
+  if (
+    hasValidAuthToken() &&
+    location.pathname === '/dashboard' &&
+    storedSetupStage &&
+    storedSetupStage !== 'completed'
+  ) {
+    const normalizedStage = normalizeSetupStage(storedSetupStage);
+    if (normalizedStage && normalizedStage !== 'completed') {
+      const setupRoute = getOnboardingRoute(normalizedStage);
+      return <Navigate to={setupRoute} replace />;
+    }
   }
 
   if (isTeachingConsoleRoute) {
@@ -767,7 +805,7 @@ function AppShell() {
               {selectedLevel.levelName}
             </div>
           )}
-          {currentRole === 'parent' && (
+          {currentRole === 'guardian' && (
             <div className="relative">
               <button className="flex items-center gap-2 px-4 py-2 bg-accent rounded-lg hover:bg-accent/80">
                 <span>{selectedChild}</span>
@@ -808,13 +846,14 @@ function AppShell() {
             }}
             className="w-full p-2 border border-border rounded-lg bg-input-background"
           >
-            <option value="parent">Parent/Guardian</option>
-            <option value="teacher">Teacher</option>
-            <option value="principal">Principal</option>
-            <option value="bursar">Bursar/Accountant</option>
+            <option value="proprietor">Proprietor</option>
             <option value="admin">Admin</option>
-            <option value="gate">Gate Staff</option>
-            <option value="nurse">School Nurse</option>
+            <option value="teacher">Teacher</option>
+            <option value="secretary">Secretary</option>
+            <option value="bursar" disabled>Bursar/Accountant (out of MVP scope)</option>
+            <option value="guardian" disabled>Guardian (out of MVP scope)</option>
+            <option value="gate" disabled>Gate Staff (scaffolding)</option>
+            <option value="nurse" disabled>School Nurse (scaffolding)</option>
           </select>
         </div>
       </div>

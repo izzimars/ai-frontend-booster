@@ -51,7 +51,7 @@ type AttendanceStatus = 'Present' | 'Late' | 'Absent';
 type ActivityType = 'academic' | 'medical' | 'logistics' | 'communication';
 type AlertKind = 'safety' | 'compliance' | 'financial';
 type SubscriptionStatus = 'Trial' | 'Active' | 'Expired' | 'Pending Confirmation';
-type ParentTab = 'overview' | 'academic' | 'medical' | 'transport' | 'communications' | 'subscription' | 'finance' | 'attendance';
+type GuardianTab = 'overview' | 'academic' | 'medical' | 'transport' | 'communications' | 'subscription' | 'finance' | 'attendance';
 type TrendDirection = 'up' | 'down' | 'flat';
 type BehaviorType = 'Positive' | 'Needs improvement' | 'Neutral';
 type AttendanceDayStatus = 'present' | 'absent' | 'late' | 'no_school' | 'no_data';
@@ -81,7 +81,7 @@ interface AlertItem {
   id: string;
   kind: AlertKind;
   message: string;
-  deepLinkTab: ParentTab;
+  deepLinkTab: GuardianTab;
 }
 
 interface StudentRecord {
@@ -137,7 +137,7 @@ interface AcademicTermRecord {
     rank: number;
     totalStudents: number;
   };
-  principalApproved: boolean;
+  proprietorApproved: boolean;
   resultGatePolicy: 'full_access' | 'partial' | 'blocked';
   subjectSummaries: SubjectSummary[];
   globalTrend: AcademicTrendPoint[];
@@ -262,7 +262,7 @@ interface TransportPortalData {
   departureHistory: DepartureRecord[];
 }
 
-type SenderRole = 'Principal' | 'Admin' | 'Class Teacher' | 'School Nurse' | 'Bursar';
+type SenderRole = 'Proprietor' | 'Admin' | 'Class Teacher' | 'Bursar';
 
 interface CommunicationMessage {
   id: string;
@@ -302,7 +302,7 @@ interface NotificationMatrixRow {
   inAppPush: boolean;
 }
 
-interface ParentNotificationPreferences {
+interface GuardianNotificationPreferences {
   highPriorityAlerts: NotificationMatrixRow;
   attendanceAlerts: NotificationMatrixRow;
   paymentReminders: NotificationMatrixRow;
@@ -326,7 +326,7 @@ interface PaymentHistoryEntry {
   receipt?: UploadedReceipt;
 }
 
-interface ParentSubscriptionProfile {
+interface GuardianSubscriptionProfile {
   status: SubscriptionStatus;
   trialEndsAt?: string;
   activeUntil?: string;
@@ -629,7 +629,7 @@ const DEFAULT_COMMUNICATION_MESSAGES: CommunicationMessage[] = [
     id: 'msg-1',
     targetType: 'all',
     senderName: 'Dr. Okafor',
-    senderRole: 'Principal',
+    senderRole: 'Proprietor',
     subject: 'Emergency Closure: Heavy Rainfall Warning',
     content: 'School will close early by 12:30 PM today due to severe weather advisory from local authorities.',
     timestamp: '2026-04-10T07:15:00Z',
@@ -690,7 +690,7 @@ const DEFAULT_ANNOUNCEMENTS: SchoolAnnouncement[] = [
   },
 ];
 
-const DEFAULT_NOTIFICATION_PREFERENCES: ParentNotificationPreferences = {
+const DEFAULT_NOTIFICATION_PREFERENCES: GuardianNotificationPreferences = {
   highPriorityAlerts: { email: true, sms: true, inAppPush: true },
   attendanceAlerts: { email: false, sms: true, inAppPush: true },
   paymentReminders: { email: true, sms: false, inAppPush: true },
@@ -862,10 +862,10 @@ const MOCK_STUDENTS: StudentRecord[] = [
       {
         id: 'act-4',
         type: 'communication',
-        summary: 'New announcement from the Principal.',
+        summary: 'New announcement from the Proprietor.',
         detail: 'PTA meeting moved to Friday, 2:00 PM at the school hall.',
         timestamp: '2026-04-07T09:10:00Z',
-        actor: 'Principal Office',
+        actor: 'Proprietor Office',
       },
     ],
     sourceSync: {
@@ -880,7 +880,7 @@ const MOCK_STUDENTS: StudentRecord[] = [
         totalAssessmentsTaken: 9,
         termAverageScore: 78,
         classRank: { rank: 12, totalStudents: 35 },
-        principalApproved: true,
+        proprietorApproved: true,
         resultGatePolicy: 'full_access',
         subjectSummaries: [
           {
@@ -1004,7 +1004,7 @@ const MOCK_STUDENTS: StudentRecord[] = [
         totalAssessmentsTaken: 7,
         termAverageScore: 71,
         classRank: { rank: 18, totalStudents: 35 },
-        principalApproved: false,
+        proprietorApproved: false,
         resultGatePolicy: 'partial',
         subjectSummaries: [
           {
@@ -1059,10 +1059,10 @@ const MOCK_STUDENTS: StudentRecord[] = [
       {
         id: 'act-5',
         type: 'communication',
-        summary: 'New announcement from the Principal.',
+        summary: 'New announcement from the Proprietor.',
         detail: 'Inter-house sports registration closes tomorrow.',
         timestamp: '2026-04-10T10:00:00Z',
-        actor: 'Principal Office',
+        actor: 'Proprietor Office',
       },
       {
         id: 'act-6',
@@ -1085,7 +1085,7 @@ const MOCK_STUDENTS: StudentRecord[] = [
         totalAssessmentsTaken: 6,
         termAverageScore: 84,
         classRank: { rank: 5, totalStudents: 35 },
-        principalApproved: true,
+        proprietorApproved: true,
         resultGatePolicy: 'partial',
         subjectSummaries: [
           {
@@ -1126,7 +1126,7 @@ const MOCK_STUDENTS: StudentRecord[] = [
         totalAssessmentsTaken: 5,
         termAverageScore: 77,
         classRank: { rank: 9, totalStudents: 35 },
-        principalApproved: true,
+        proprietorApproved: true,
         resultGatePolicy: 'full_access',
         subjectSummaries: [
           {
@@ -1169,7 +1169,7 @@ function buildDefaultSubscriptions() {
   const now = ATTENDANCE_FIXED_NOW.getTime();
   const inDays = (days: number) => new Date(now + days * 24 * 60 * 60 * 1000).toISOString();
 
-  return MOCK_STUDENTS.reduce<Record<string, ParentSubscriptionProfile>>((acc, student) => {
+  return MOCK_STUDENTS.reduce<Record<string, GuardianSubscriptionProfile>>((acc, student) => {
     if (student.subscriptionStatus === 'Active') {
       acc[student.id] = {
         status: 'Active',
@@ -1296,7 +1296,7 @@ function getTimelineStyle(type: ActivityType) {
 
 export function ParentDashboard() {
   const [activeStudentId, setActiveStudentId] = useState(MOCK_STUDENTS[0].id);
-  const [activeTab, setActiveTab] = useState<ParentTab>('overview');
+  const [activeTab, setActiveTab] = useState<GuardianTab>('overview');
   const [selectedEvent, setSelectedEvent] = useState<ActivityEvent | null>(null);
   const [selectedTermLabel, setSelectedTermLabel] = useState(
     MOCK_STUDENTS[0].academicByTerm.find((term) => term.isCurrent)?.termLabel ?? MOCK_STUDENTS[0].academicByTerm[0].termLabel,
@@ -1319,14 +1319,14 @@ export function ParentDashboard() {
   const [localDepartureLogByStudent, setLocalDepartureLogByStudent] = useState<Record<string, DepartureRecord[]>>({});
   const [communications, setCommunications] = useState<CommunicationMessage[]>([]);
   const [announcements, setAnnouncements] = useState<SchoolAnnouncement[]>([]);
-  const [notificationPreferences, setNotificationPreferences] = useState<ParentNotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [notificationPreferences, setNotificationPreferences] = useState<GuardianNotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [communicationsSearch, setCommunicationsSearch] = useState('');
   const [communicationsHighPriorityOnly, setCommunicationsHighPriorityOnly] = useState(false);
   const [communicationsDateFrom, setCommunicationsDateFrom] = useState('');
   const [communicationsDateTo, setCommunicationsDateTo] = useState('');
   const [selectedMessage, setSelectedMessage] = useState<CommunicationMessage | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
-  const [subscriptionsByStudent, setSubscriptionsByStudent] = useState<Record<string, ParentSubscriptionProfile>>({});
+  const [subscriptionsByStudent, setSubscriptionsByStudent] = useState<Record<string, GuardianSubscriptionProfile>>({});
   const [medicalProfilesByStudent, setMedicalProfilesByStudent] = useState<Record<string, MedicalPortalData>>({});
   const [receiptDraftByStudent, setReceiptDraftByStudent] = useState<Record<string, UploadedReceipt | null>>({});
   const [receiptSenderNameByStudent, setReceiptSenderNameByStudent] = useState<Record<string, string>>({});
@@ -1414,7 +1414,7 @@ export function ParentDashboard() {
     }
 
     const refresh = () => {
-      const all = readJsonFromStorage<Record<string, ParentSubscriptionProfile>>(
+      const all = readJsonFromStorage<Record<string, GuardianSubscriptionProfile>>(
         subscriptionsStoreKey(),
         DEFAULT_SUBSCRIPTIONS,
       );
@@ -1449,7 +1449,7 @@ export function ParentDashboard() {
       writeJsonToStorage<SchoolReply[]>(repliesStoreKey(), []);
     }
 
-    const profile = readJsonFromStorage<{ notificationPreferences?: ParentNotificationPreferences }>(
+    const profile = readJsonFromStorage<{ notificationPreferences?: GuardianNotificationPreferences }>(
       parentProfileStoreKey(),
       {},
     );
@@ -1463,7 +1463,7 @@ export function ParentDashboard() {
     const refresh = () => {
       const inbox = readJsonFromStorage<CommunicationMessage[]>(communicationsStoreKey(), DEFAULT_COMMUNICATION_MESSAGES);
       const board = readJsonFromStorage<SchoolAnnouncement[]>(announcementsStoreKey(), DEFAULT_ANNOUNCEMENTS);
-      const profile = readJsonFromStorage<{ notificationPreferences?: ParentNotificationPreferences }>(
+      const profile = readJsonFromStorage<{ notificationPreferences?: GuardianNotificationPreferences }>(
         parentProfileStoreKey(),
         {},
       );
@@ -1541,7 +1541,7 @@ export function ParentDashboard() {
     );
   }, [activeTerm]);
 
-  const canDownloadReportCard = activeTerm.principalApproved && activeTerm.resultGatePolicy !== 'blocked';
+  const canDownloadReportCard = activeTerm.proprietorApproved && activeTerm.resultGatePolicy !== 'blocked';
 
   const activeTransportPortal = useMemo(() => {
     return MOCK_TRANSPORT_PORTAL[activeStudent.id] ?? MOCK_TRANSPORT_PORTAL['stu-israel'];
@@ -1657,11 +1657,11 @@ export function ParentDashboard() {
   };
 
   const updateNotificationPreference = (
-    eventKey: keyof ParentNotificationPreferences,
+    eventKey: keyof GuardianNotificationPreferences,
     channelKey: keyof NotificationMatrixRow,
     checked: boolean,
   ) => {
-    const nextPrefs: ParentNotificationPreferences = {
+    const nextPrefs: GuardianNotificationPreferences = {
       ...notificationPreferences,
       [eventKey]: {
         ...notificationPreferences[eventKey],
@@ -1669,7 +1669,7 @@ export function ParentDashboard() {
       },
     };
     setNotificationPreferences(nextPrefs);
-    const profile = readJsonFromStorage<{ notificationPreferences?: ParentNotificationPreferences }>(
+    const profile = readJsonFromStorage<{ notificationPreferences?: GuardianNotificationPreferences }>(
       parentProfileStoreKey(),
       {},
     );
@@ -1678,7 +1678,7 @@ export function ParentDashboard() {
 
   const updateSubscriptionForStudent = (
     studentId: string,
-    updater: (current: ParentSubscriptionProfile) => ParentSubscriptionProfile,
+    updater: (current: GuardianSubscriptionProfile) => GuardianSubscriptionProfile,
   ) => {
     setSubscriptionsByStudent((prev) => {
       const current = prev[studentId] ?? DEFAULT_SUBSCRIPTIONS[studentId];
@@ -2130,7 +2130,7 @@ export function ParentDashboard() {
 
       <Card>
         <div className="flex flex-wrap gap-2">
-          {(['overview', 'academic', 'medical', 'transport', 'communications', 'subscription', 'finance', 'attendance'] as ParentTab[]).map((tab) => (
+          {(['overview', 'academic', 'medical', 'transport', 'communications', 'subscription', 'finance', 'attendance'] as GuardianTab[]).map((tab) => (
             <Button
               key={tab}
               variant={activeTab === tab ? 'primary' : 'outline'}
@@ -2341,7 +2341,7 @@ export function ParentDashboard() {
                 {canDownloadReportCard ? (
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <p className="text-sm text-muted-foreground">
-                      Available because principal approval is complete and parent access is allowed by fee-gating policy.
+                      Available because proprietor approval is complete and parent access is allowed by fee-gating policy.
                     </p>
                     <Button onClick={() => window.alert('Report card download would start here')}>
                       Download Term Report Card
@@ -2794,7 +2794,7 @@ export function ParentDashboard() {
                             ['attendanceAlerts', 'Attendance Alerts'],
                             ['paymentReminders', 'Payment Reminders'],
                             ['medicationHealth', 'Medication/Health'],
-                          ] as Array<[keyof ParentNotificationPreferences, string]>
+                          ] as Array<[keyof GuardianNotificationPreferences, string]>
                         ).map(([eventKey, label]) => (
                           <tr key={eventKey} className="border-b">
                             <td className="py-2 text-sm">{label}</td>
