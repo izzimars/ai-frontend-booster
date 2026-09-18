@@ -46,6 +46,7 @@ import { FinanceFeeManagementView } from './FinanceFeeManagementView';
 import { MedicalProfileEditor } from './MedicalProfileEditor';
 import { Modal } from '../Modal';
 import { SubjectMasteryView } from './SubjectMasteryView';
+import { showFees, showMedication, showTransport } from '../../mvpScope';
 
 type AttendanceStatus = 'Present' | 'Late' | 'Absent';
 type ActivityType = 'academic' | 'medical' | 'logistics' | 'communication';
@@ -1505,6 +1506,7 @@ export function ParentDashboard() {
   const timelineItems = useMemo(
     () =>
       [...activeStudent.activityFeed]
+        .filter((event) => (showMedication || event.type !== 'medical') && (showTransport || event.type !== 'logistics'))
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, 20),
     [activeStudent.activityFeed],
@@ -1904,12 +1906,13 @@ export function ParentDashboard() {
   }, [calendarMonthDate]);
 
   const isLocked =
+    showFees &&
     (activeSubscription.status === 'Expired' || activeSubscription.status === 'Pending Confirmation') &&
     activeTab !== 'overview' &&
     activeTab !== 'subscription';
   const AttendanceIcon = attendanceVisual.icon;
 
-  if (isEditingMedicalProfile) {
+  if (showMedication && isEditingMedicalProfile) {
     return (
       <MedicalProfileEditor
         studentId={activeStudent.id}
@@ -1930,7 +1933,7 @@ export function ParentDashboard() {
     );
   }
 
-  if (isViewingFinanceDetails) {
+  if (showFees && isViewingFinanceDetails) {
     return (
       <FinanceFeeManagementView
         studentId={activeStudent.id}
@@ -2071,11 +2074,13 @@ export function ParentDashboard() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            {activeSubscription.status === 'Expired'
-              ? 'Overview and Subscription tabs are visible. Other tabs are locked until renewal.'
-              : activeSubscription.status === 'Pending Confirmation'
-                ? 'Payment is under review. Overview and Subscription tabs remain available.'
-                : 'All parent tabs are available for this student.'}
+            {showFees
+              ? activeSubscription.status === 'Expired'
+                ? 'Overview and Subscription tabs are visible. Other tabs are locked until renewal.'
+                : activeSubscription.status === 'Pending Confirmation'
+                  ? 'Payment is under review. Overview and Subscription tabs remain available.'
+                  : 'All parent tabs are available for this student.'
+              : 'All MVP parent tabs are available for this student.'}
           </p>
         </div>
       </Card>
@@ -2130,7 +2135,9 @@ export function ParentDashboard() {
 
       <Card>
         <div className="flex flex-wrap gap-2">
-          {(['overview', 'academic', 'medical', 'transport', 'communications', 'subscription', 'finance', 'attendance'] as GuardianTab[]).map((tab) => (
+          {(['overview', 'academic', 'medical', 'transport', 'communications', 'subscription', 'finance', 'attendance'] as GuardianTab[])
+            .filter((tab) => (showMedication || tab !== 'medical') && (showTransport || tab !== 'transport') && (showFees || (tab !== 'subscription' && tab !== 'finance')))
+            .map((tab) => (
             <Button
               key={tab}
               variant={activeTab === tab ? 'primary' : 'outline'}
@@ -2375,7 +2382,7 @@ export function ParentDashboard() {
             </>
           )}
 
-          {activeTab === 'medical' && (
+          {showMedication && activeTab === 'medical' && (
             <>
               <Card className="border-red-200 bg-red-50/40" title="Safety Banners & Urgent Alerts">
                 <div className="space-y-2">
@@ -2540,7 +2547,7 @@ export function ParentDashboard() {
             </>
           )}
 
-          {activeTab === 'transport' && (
+          {showTransport && activeTab === 'transport' && (
             <>
               <Card title="Live Departure Tracker">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
@@ -2793,7 +2800,7 @@ export function ParentDashboard() {
                             ['highPriorityAlerts', 'High Priority Alerts'],
                             ['attendanceAlerts', 'Attendance Alerts'],
                             ['paymentReminders', 'Payment Reminders'],
-                            ['medicationHealth', 'Medication/Health'],
+                            ...(showMedication ? [['medicationHealth', 'Medication/Health'] as [keyof GuardianNotificationPreferences, string]] : []),
                           ] as Array<[keyof GuardianNotificationPreferences, string]>
                         ).map(([eventKey, label]) => (
                           <tr key={eventKey} className="border-b">
@@ -2829,7 +2836,7 @@ export function ParentDashboard() {
             </>
           )}
 
-          {activeTab === 'subscription' && (
+          {showFees && activeTab === 'subscription' && (
             <>
               <Card title="Subscription Status">
                 <div className="space-y-3">
@@ -3078,7 +3085,7 @@ export function ParentDashboard() {
             </>
           )}
 
-          {activeTab === 'finance' && (
+          {showFees && activeTab === 'finance' && (
             <Card title="Finance Status">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -3306,7 +3313,7 @@ export function ParentDashboard() {
             <div className="text-center max-w-md">
               <h3 className="text-xl font-semibold mb-2">Renew to Continue</h3>
               <p className="text-muted-foreground mb-4">
-                Overview and Subscription remain visible, but academic and school operation tabs are locked while your subscription is inactive.
+                Overview remains visible, but academic and school operation tabs are locked while your subscription is inactive.
               </p>
               <Button>Renew Now</Button>
             </div>
@@ -3321,7 +3328,11 @@ export function ParentDashboard() {
             <BookOpen size={14} /> Teacher Daily Log: {new Date(activeStudent.sourceSync.teacherDailyLog).toLocaleString()}
           </p>
           <p className="flex items-center gap-2">
-            <Receipt size={14} /> Bursar Ledger: {new Date(activeStudent.sourceSync.bursarLedger).toLocaleString()}
+            {showFees && (
+              <span className="flex items-center gap-1">
+                <Receipt size={14} /> Bursar Ledger: {new Date(activeStudent.sourceSync.bursarLedger).toLocaleString()}
+              </span>
+            )}
           </p>
           <p className="flex items-center gap-2">
             <TrendingUp size={14} /> Assessment Store: {new Date(activeStudent.sourceSync.assessmentStore).toLocaleString()}
@@ -3422,9 +3433,11 @@ export function ParentDashboard() {
             <p>
               <span className="font-medium">Arrival Time:</span> {selectedAttendanceDay.arrivalTime ?? 'Not recorded'}
             </p>
-            <p>
-              <span className="font-medium">Departure Time:</span> {selectedAttendanceDay.departureTime ?? 'Not recorded'}
-            </p>
+            {showTransport && (
+              <p>
+                <span className="font-medium">Departure Time:</span> {selectedAttendanceDay.departureTime ?? 'Not recorded'}
+              </p>
+            )}
             <p>
               <span className="font-medium">Teacher Note:</span> {selectedAttendanceDay.teacherNote ?? 'No note provided'}
             </p>

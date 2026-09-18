@@ -85,6 +85,7 @@ import {
   type AcademicTerm,
 } from '../../../services/academicCalendarApi';
 import { useLevelContext } from '../../hooks/useLevelContext';
+import { showFees } from '../../mvpScope';
 
 // ========== TYPES ==========
 type FeePolicy = 'full_access' | 'partial_access' | 'block';
@@ -538,7 +539,7 @@ export function ProprietorDashboard() {
     'userManagement' |
     'auditLogs' |
     'dataChecks'
-  >('fee');
+  >('kpi');
   
   // Block 3 state
   const [approvalTab, setApprovalTab] = useState<'syllabus' | 'lessonNotes'>('syllabus');
@@ -1430,8 +1431,9 @@ export function ProprietorDashboard() {
   };
 
   useEffect(() => {
+    if (!showFees || activeMainTab !== 'fee') return;
     loadFeeAndArmData();
-  }, [levelId, selectedFeeTerm, selectedArmFilterId]);
+  }, [activeMainTab, levelId, selectedFeeTerm, selectedArmFilterId]);
 
   const approvePendingFeeItem = async (feeItemId: number) => {
     if (!levelId) return;
@@ -2252,7 +2254,7 @@ export function ProprietorDashboard() {
       <div className="border-b border-border overflow-x-auto">
         <div className="flex gap-1 min-w-max">
           {[
-            { id: 'fee', label: 'Fee Oversight' },
+            ...(showFees ? [{ id: 'fee', label: 'Fee Oversight' }] : []),
             { id: 'kpi', label: 'School KPI' },
             { id: 'approvals', label: 'Approval Workflow' },
             { id: 'resultApproval', label: 'Result Approval' },
@@ -2278,7 +2280,7 @@ export function ProprietorDashboard() {
       </div>
       
       {/* ========== TAB 1: FEE OVERSIGHT ========== */}
-      {activeMainTab === 'fee' && (
+      {showFees && activeMainTab === 'fee' && (
         <>
           <Card title="Fee Items Requiring Approval">
             <div className="overflow-x-auto">
@@ -2574,7 +2576,7 @@ export function ProprietorDashboard() {
       {activeMainTab === 'resultApproval' && (
         <>
         {/* Result Release + Fee Gating (Block 5) */}
-          <Card title="Result Release Control & Fee Gating">
+          <Card title={showFees ? 'Result Release Control & Fee Gating' : 'Result Release Control'}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <div><label>Term</label><select className="w-full border rounded p-2" value={selectedResultTerm} onChange={e=>setSelectedResultTerm(e.target.value)}><option>Term 3, 2026</option><option>Term 2, 2026</option></select></div>
               <div><label>Exam Start Date</label><input type="date" className="w-full border rounded p-2" value={examStartDate} onChange={e=>setExamStartDate(e.target.value)} /></div>
@@ -2584,16 +2586,18 @@ export function ProprietorDashboard() {
               <div><p className="font-medium">Result Visibility</p><p className="text-sm text-muted-foreground">{resultsReleased ? 'Visible to parents' : 'Hidden from parents'}</p>{examEndDate && new Date() < new Date(examEndDate) && <p className="text-yellow-600 text-sm">Results will not be visible until after exam end date.</p>}</div>
               <button disabled={!examStartDate || !examEndDate} onClick={handleResultsToggle} className={`relative inline-flex h-6 w-11 rounded-full transition ${resultsReleased ? 'bg-green-600' : 'bg-gray-400'}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${resultsReleased ? 'translate-x-6' : 'translate-x-1'}`} /></button>
             </div>
-            <div className="border rounded p-4">
-              <p className="font-medium mb-2">Fee Gating Policy</p>
-              <div className="flex gap-4 mb-3">
-                <label><input type="radio" name="policy" value="full_access" checked={feePolicy==='full_access'} onChange={()=>setFeePolicy('full_access')} /> Full Access (no fee block)</label>
-                <label><input type="radio" name="policy" value="partial_access" checked={feePolicy==='partial_access'} onChange={()=>setFeePolicy('partial_access')} /> Partial Access (summary only)</label>
-                <label><input type="radio" name="policy" value="block" checked={feePolicy==='block'} onChange={()=>setFeePolicy('block')} /> Block All Results</label>
+            {showFees && (
+              <div className="border rounded p-4">
+                <p className="font-medium mb-2">Fee Gating Policy</p>
+                <div className="flex gap-4 mb-3">
+                  <label><input type="radio" name="policy" value="full_access" checked={feePolicy==='full_access'} onChange={()=>setFeePolicy('full_access')} /> Full Access (no fee block)</label>
+                  <label><input type="radio" name="policy" value="partial_access" checked={feePolicy==='partial_access'} onChange={()=>setFeePolicy('partial_access')} /> Partial Access (summary only)</label>
+                  <label><input type="radio" name="policy" value="block" checked={feePolicy==='block'} onChange={()=>setFeePolicy('block')} /> Block All Results</label>
+                </div>
+                <div className="bg-yellow-50 p-2 rounded text-sm mb-3"><AlertTriangle size={14} className="inline mr-1"/> {affectedStudentsCount} students have unpaid fees and will be affected by this policy.</div>
+                <Button onClick={handleApplyFeePolicy}>Apply Policy</Button>
               </div>
-              <div className="bg-yellow-50 p-2 rounded text-sm mb-3"><AlertTriangle size={14} className="inline mr-1"/> {affectedStudentsCount} students have unpaid fees and will be affected by this policy.</div>
-              <Button onClick={handleApplyFeePolicy}>Apply Policy</Button>
-            </div>
+            )}
           </Card>
         <Card title={`Result Approval – ${selectedTermForApproval}`} action={
           <div className="flex gap-2">
@@ -3792,13 +3796,13 @@ export function ProprietorDashboard() {
       )}
       
       {/* Fee class detail modal (simplified) */}
-      {selectedFinanceClass && (
+      {showFees && selectedFinanceClass && (
         <Modal isOpen onClose={()=>setSelectedFinanceClass(null)} title={`Fee Details – ${selectedFinanceClass}`} footer={<Button onClick={()=>setSelectedFinanceClass(null)}>Close</Button>}>
           <p>Per‑student breakdown would appear here (mock data).</p>
         </Modal>
       )}
 
-      {selectedFeeItemDetail && (
+      {showFees && selectedFeeItemDetail && (
         <Modal
           isOpen
           onClose={() => setSelectedFeeItemDetailId(null)}

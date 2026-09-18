@@ -4,6 +4,7 @@ import { AlertCircle, ArrowLeft, Pencil, Pill, Plus, Trash2 } from 'lucide-react
 import { Button } from '../Button';
 import { Card } from '../Card';
 import { Badge } from '../Badge';
+import { showMedication } from '../../mvpScope';
 
 type ActivityStatus = 'not_started' | 'in_progress' | 'completed';
 type AttendanceState = 'present' | 'absent' | 'late';
@@ -584,7 +585,7 @@ export function TeachingConsolePage() {
 
   return (
     <div className="min-h-screen bg-background" onBlurCapture={() => hasUnsavedChanges && saveDraft()}>
-      {dailyActivity.medicationAlerts.length > 0 && (
+      {showMedication && dailyActivity.medicationAlerts.length > 0 && (
         <div className="sticky top-0 z-50 border-b border-red-300 bg-red-100 dark:bg-red-950/60">
           <div className="max-w-[1400px] mx-auto px-6 py-3 flex items-center gap-2 text-red-800 dark:text-red-200">
             <AlertCircle size={18} />
@@ -957,7 +958,8 @@ export function TeachingConsolePage() {
           </div>
 
           <div className="space-y-6">
-            <Card title="Medication Alerts">
+            {showMedication && (
+              <Card title="Medication Alerts">
               <div className="space-y-3">
                 {dailyActivity.medicationAlerts.length === 0 && (
                   <p className="text-sm text-muted-foreground">No medication alerts for this class.</p>
@@ -996,7 +998,8 @@ export function TeachingConsolePage() {
                   );
                 })}
               </div>
-            </Card>
+              </Card>
+            )}
 
             <Card title="Homework">
               <div className="space-y-3">

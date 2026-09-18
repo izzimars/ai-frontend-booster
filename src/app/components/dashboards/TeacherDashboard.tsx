@@ -11,6 +11,7 @@ import {
 import { Fragment, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../Modal';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { showMedication, showTransport } from '../../mvpScope';
 
 type DailyActivityStatus = 'not_started' | 'in_progress' | 'completed';
 type SyllabusStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
@@ -1831,12 +1832,16 @@ export function TeacherDashboard({ activeTabOverride }: TeacherDashboardProps) {
         <button onClick={() => setActiveTab('performance')} className={`px-4 py-2 ${activeTab === 'performance' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
           Performance
         </button>
-        <button onClick={() => setActiveTab('medical')} className={`px-4 py-2 ${activeTab === 'medical' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
-          Medical
-        </button>
-        <button onClick={() => setActiveTab('pickup')} className={`px-4 py-2 ${activeTab === 'pickup' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
-          Pickup
-        </button>
+        {showMedication && (
+          <button onClick={() => setActiveTab('medical')} className={`px-4 py-2 ${activeTab === 'medical' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
+            Medical
+          </button>
+        )}
+        {showTransport && (
+          <button onClick={() => setActiveTab('pickup')} className={`px-4 py-2 ${activeTab === 'pickup' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>
+            Pickup
+          </button>
+        )}
       </div>
 
       {/* Top Bar: Selectors */}
@@ -2908,7 +2913,7 @@ export function TeacherDashboard({ activeTabOverride }: TeacherDashboardProps) {
         </div>
       )}
 
-      {activeTab === 'medical' && (
+      {showMedication && activeTab === 'medical' && (
         <div className="space-y-6">
           <Card
             title="Medications Due Today"
@@ -2991,7 +2996,7 @@ export function TeacherDashboard({ activeTabOverride }: TeacherDashboardProps) {
         </div>
       )}
 
-      {activeTab === 'pickup' && (
+      {showTransport && activeTab === 'pickup' && (
         <div className="space-y-6 max-w-4xl">
           <Card title="Verify Pickup Code">
             <div className="space-y-4">
@@ -3099,7 +3104,7 @@ export function TeacherDashboard({ activeTabOverride }: TeacherDashboardProps) {
         </div>
       )}
 
-      {selectedMedicalStudent && (
+      {showMedication && selectedMedicalStudent && (
         <Modal
           isOpen={true}
           onClose={() => setSelectedMedicalStudent(null)}
@@ -3168,7 +3173,7 @@ export function TeacherDashboard({ activeTabOverride }: TeacherDashboardProps) {
         </Modal>
       )}
 
-      {selectedMedication && (
+      {showMedication && selectedMedication && (
         <Modal
           isOpen={true}
           onClose={() => setSelectedMedication(null)}

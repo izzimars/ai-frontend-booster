@@ -6,6 +6,7 @@ import { AuthLayout } from './AuthLayout';
 import { AuthErrorAlert } from './AuthErrorAlert';
 import { PasswordStrengthRules } from './PasswordStrengthRules';
 import { changePassword, isPasswordValid } from '../../../services/authService';
+import { getStoredRoleDashboardRoute } from '../../auth/roleRoutes';
 
 export function ChangePasswordPage() {
   const navigate = useNavigate();
@@ -60,7 +61,7 @@ export function ChangePasswordPage() {
           <p className="text-sm text-slate-600">Your password has been updated successfully.</p>
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate(getStoredRoleDashboardRoute())}
             className="mt-6 inline-flex items-center justify-center rounded-xl bg-ink px-4 py-3 text-sm font-medium text-white transition hover:bg-ink/90"
           >
             Continue to dashboard

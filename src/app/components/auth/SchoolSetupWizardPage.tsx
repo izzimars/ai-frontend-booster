@@ -4,13 +4,16 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthLayout } from './AuthLayout';
 import { AuthErrorAlert } from './AuthErrorAlert';
 import { Stepper, type SetupStage, mapSetupStageToStepIndex } from './Stepper';
-import { apiClient, decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '../../../api/client';
+import { decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '../../../api/client';
+import { schoolApi } from '../../../services/apiClient';
 import { getOnboardingRoute } from '../../auth/setupRoutes';
+import { getStoredRoleDashboardRoute } from '../../auth/roleRoutes';
 
 type WizardStep = 0 | 1 | 2 | 3 | 4;
 
 type LevelOption = {
-  name: string;
+  label: string;
+  apiName: 'nursery' | 'primary' | 'junior secondary' | 'senior secondary';
   order: number;
 };
 
@@ -36,6 +39,8 @@ type LevelsApiItem = {
   levelOrder?: number;
 };
 
+const normalizeClassName = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+
 type SessionApiItem = {
   session_id: string;
   session_name: string;
@@ -56,12 +61,10 @@ const sessionNamePattern = /^\d{4}\/\d{4}$/;
 const termNameOptions = ['First Term', 'Second Term', 'Third Term'];
 
 const levelOptions: LevelOption[] = [
-  { name: 'Creche', order: 0 },
-  { name: 'Nursery', order: 1 },
-  { name: 'Kindergarten', order: 2 },
-  { name: 'Primary', order: 3 },
-  { name: 'Junior Secondary', order: 4 },
-  { name: 'Senior Secondary', order: 5 },
+  { label: 'Nursery', apiName: 'nursery', order: 1 },
+  { label: 'Primary', apiName: 'primary', order: 2 },
+  { label: 'Junior Secondary', apiName: 'junior secondary', order: 3 },
+  { label: 'Senior Secondary', apiName: 'senior secondary', order: 4 },
 ];
 
 type ApiErrorShape = {
@@ -303,7 +306,7 @@ export function SchoolSetupWizardPage() {
       setIsLoadingSessions(true);
 
       try {
-        const response = await apiClient.get('/school/sessions');
+        const response = await schoolApi.get('/school/sessions');
         const rawItems: SessionApiItem[] = Array.isArray(response.data?.data) ? response.data.data : [];
 
         const normalized = rawItems.map((item) => ({
@@ -353,7 +356,7 @@ export function SchoolSetupWizardPage() {
       setIsLoadingCreatedLevels(true);
 
       try {
-        const response = await apiClient.get('/school/levels');
+        const response = await schoolApi.get('/school/levels');
         const rawItems: LevelsApiItem[] = Array.isArray(response.data)
           ? response.data
           : Array.isArray(response.data?.data)
@@ -407,7 +410,7 @@ export function SchoolSetupWizardPage() {
 
     setIsSubmitting(true);
     try {
-      await apiClient.post('/school/delegate-setup', {
+      await schoolApi.post('/school/delegate-setup', {
         email: delegateForm.email.trim(),
         role: 'admin',
         phoneNumber: delegateForm.phoneNumber.trim(),
@@ -442,7 +445,7 @@ export function SchoolSetupWizardPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await apiClient.post('/school/sessions', {
+      const response = await schoolApi.post('/school/sessions', {
         name: sessionName.trim(),
         startDate: sessionStartDate,
         endDate: sessionEndDate,
@@ -499,7 +502,7 @@ export function SchoolSetupWizardPage() {
 
     setIsSubmitting(true);
     try {
-      await apiClient.post('/school/terms', {
+      await schoolApi.post('/school/terms', {
         name: termName,
         startDate: termStartDate,
         endDate: termEndDate,
@@ -539,9 +542,9 @@ export function SchoolSetupWizardPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await apiClient.post('/school/levels', {
+      const response = await schoolApi.post('/school/levels', {
         levels: selectedLevels.map((level) => ({
-          name: level.name,
+          name: level.apiName,
           categoryOrder: level.order,
         })),
       });
@@ -641,6 +644,24 @@ export function SchoolSetupWizardPage() {
       return;
     }
 
+    const normalizedClassNames = draftsForLevel.map((draft) => normalizeClassName(draft.name));
+    const duplicateName = normalizedClassNames.find((name, index) => name && normalizedClassNames.indexOf(name) !== index);
+    if (duplicateName) {
+      setError('Class names must be unique across the school. The class order is saved separately and is not part of the class name, so do not reuse the same class name with a different order.');
+      return;
+    }
+
+    const otherLevelClassNames = Object.entries(classDraftsByLevel)
+      .filter(([levelId]) => levelId !== selectedClassLevelId)
+      .flatMap(([, drafts]) => drafts.map((draft) => normalizeClassName(draft.name)))
+      .filter(Boolean);
+    const otherLevelClassNameSet = new Set(otherLevelClassNames);
+    const reusedSchoolClassName = normalizedClassNames.find((name) => otherLevelClassNameSet.has(name));
+    if (reusedSchoolClassName) {
+      setError('That class name is already used in another level. Class names must be unique across the school; use the class order field for sequence instead of repeating the name.');
+      return;
+    }
+
     const invalidClassOrder = draftsForLevel.some((draft) => !Number.isInteger(draft.classOrder) || draft.classOrder < 1);
     if (invalidClassOrder) {
       setError('Class order must be a whole number greater than 0.');
@@ -663,14 +684,14 @@ export function SchoolSetupWizardPage() {
           order: draft.classOrder,
         }));
 
-      await apiClient.post('/school/classes', classesPayload);
+      await schoolApi.post('/school/classes', classesPayload);
 
       localStorage.setItem(setupStageKey, 'classes_created');
 
       let resolvedLevels = createdLevels;
 
       if (!resolvedLevels.length) {
-        const levelsResponse = await apiClient.get('/school/levels');
+        const levelsResponse = await schoolApi.get('/school/levels');
         const rawItems: LevelsApiItem[] = Array.isArray(levelsResponse.data)
           ? levelsResponse.data
           : Array.isArray(levelsResponse.data?.data)
@@ -694,16 +715,16 @@ export function SchoolSetupWizardPage() {
       }
 
       if (resolvedLevels.length === 1) {
-        navigate('/dashboard');
+        navigate(getStoredRoleDashboardRoute());
         return;
       }
 
       if (resolvedLevels.length > 1) {
-        navigate('/select-level', { state: { levels: resolvedLevels } });
+        navigate('/auth/levels', { state: { levels: resolvedLevels } });
         return;
       } 
 
-      navigate('/dashboard');
+      navigate(getStoredRoleDashboardRoute());
     } catch (error: unknown) {
       setError(extractErrorMessage(error, 'Unable to create classes.'));
     } finally {
@@ -1006,7 +1027,7 @@ export function SchoolSetupWizardPage() {
                     >
                       ✓
                     </span>
-                    <span>{option.name}</span>
+                    <span>{option.label}</span>
                   </button>
                 );
               })}
@@ -1017,7 +1038,7 @@ export function SchoolSetupWizardPage() {
                 <p className="font-medium text-slate-800">Selected level order mapping:</p>
                 <ul className="mt-2 space-y-1">
                   {selectedLevels.map((level) => (
-                    <li key={level.order}>{level.name} = {level.order}</li>
+                    <li key={level.order}>{level.label} = {level.order}</li>
                   ))}
                 </ul>
               </div>
@@ -1069,31 +1090,39 @@ export function SchoolSetupWizardPage() {
 
             {selectedClassLevel ? (
               <p className="text-sm text-slate-600">
-                Adding classes under <span className="font-medium text-slate-800">{selectedClassLevel.name}</span>.
+                Adding classes under <span className="font-medium text-slate-800">{selectedClassLevel.name}</span>. Class names must be unique across the school. Class order is stored separately and is not part of the class name.
               </p>
             ) : null}
 
             <div className="space-y-3">
               {selectedClassDrafts.map((draft) => (
                 <div key={draft.id} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_180px_auto]">
-                  <input
-                    type="text"
-                    required
-                    value={draft.name}
-                    onChange={(event) => updateClassDraft(draft.id, { name: event.target.value })}
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    placeholder="e.g. Primary 1"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600" htmlFor={`class-name-${draft.id}`}>Class Name</label>
+                    <input
+                      id={`class-name-${draft.id}`}
+                      type="text"
+                      required
+                      value={draft.name}
+                      onChange={(event) => updateClassDraft(draft.id, { name: event.target.value })}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      placeholder="e.g. Primary 1"
+                    />
+                  </div>
 
-                  <input
-                    type="number"
-                    min={1}
-                    required
-                    value={draft.classOrder}
-                    onChange={(event) => updateClassDraft(draft.id, { classOrder: Number(event.target.value || 1) })}
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    placeholder="Class Order"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-600" htmlFor={`class-order-${draft.id}`}>Class Order</label>
+                    <input
+                      id={`class-order-${draft.id}`}
+                      type="number"
+                      min={1}
+                      required
+                      value={draft.classOrder}
+                      onChange={(event) => updateClassDraft(draft.id, { classOrder: Number(event.target.value || 1) })}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      placeholder="Class Order"
+                    />
+                  </div>
 
                   <button
                     type="button"

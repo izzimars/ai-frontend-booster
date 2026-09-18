@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, MessageSquare, Pill } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageSquare } from 'lucide-react';
 import { Button } from '../Button';
 import { Card } from '../Card';
 import { Badge } from '../Badge';
+import { showMedication, showOversight } from '../../mvpScope';
 
 type TeacherClassRole = 'classTeacher' | 'subjectTeacher';
 
@@ -106,7 +107,7 @@ export function ClassOverviewPage() {
             <Link to="/" className="hover:underline">Home</Link> <span className="mx-1">&gt;</span> Class <span className="mx-1">&gt;</span> {classMeta.className}
           </div>
           <h1 className="text-2xl">{classMeta.className}</h1>
-          <p className="text-sm text-muted-foreground mt-1">Class oversight workspace</p>
+          <p className="text-sm text-muted-foreground mt-1">Class workspace</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={classMeta.teacherRole === 'classTeacher' ? 'approved' : 'default'}>
@@ -118,27 +119,29 @@ export function ClassOverviewPage() {
         </div>
       </div>
 
-      <Card title="Subject Oversight">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {classMeta.subjectOversight.map((item) => (
-            <button
-              key={`${item.subject}-${item.teacher}`}
-              type="button"
-              className="border border-border rounded-lg p-4 bg-accent/20 text-left hover:bg-accent/30 transition-colors"
-              onClick={() => navigate(`/class/${classMeta.id}/subject/${toSubjectId(item.subject)}`)}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium">{item.subject}</p>
-                <Badge variant={item.syllabusStatus as any}>{item.syllabusStatus}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">Teacher: {item.teacher}</p>
-              <div className="mt-3 inline-flex items-center text-sm text-primary">
-                Open subject workspace <ChevronRight size={14} className="ml-1" />
-              </div>
-            </button>
-          ))}
-        </div>
-      </Card>
+      {showOversight && (
+        <Card title="Subject Oversight">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {classMeta.subjectOversight.map((item) => (
+              <button
+                key={`${item.subject}-${item.teacher}`}
+                type="button"
+                className="border border-border rounded-lg p-4 bg-accent/20 text-left hover:bg-accent/30 transition-colors"
+                onClick={() => navigate(`/class/${classMeta.id}/subject/${toSubjectId(item.subject)}`)}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium">{item.subject}</p>
+                  <Badge variant={item.syllabusStatus as any}>{item.syllabusStatus}</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">Teacher: {item.teacher}</p>
+                <div className="mt-3 inline-flex items-center text-sm text-primary">
+                  Open subject workspace <ChevronRight size={14} className="ml-1" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card title="Student Roster">
         <div className="mt-1 overflow-x-auto">
@@ -161,9 +164,9 @@ export function ClassOverviewPage() {
                   <td className="py-2">{student.attendance}</td>
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      {student.medicationDueToday && (
+                      {showMedication && student.medicationDueToday && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 px-2 py-1 text-xs" title="Medication due today">
-                          <Pill size={12} /> Medical
+                          Medical
                         </span>
                       )}
                       {(student.unreadGuardianMessages ?? 0) > 0 && (
@@ -171,7 +174,7 @@ export function ClassOverviewPage() {
                           <MessageSquare size={12} /> {student.unreadGuardianMessages}
                         </span>
                       )}
-                      {!student.medicationDueToday && (student.unreadGuardianMessages ?? 0) === 0 && (
+                      {(!showMedication || !student.medicationDueToday) && (student.unreadGuardianMessages ?? 0) === 0 && (
                         <span className="text-xs text-muted-foreground">No alerts</span>
                       )}
                     </div>

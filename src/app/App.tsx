@@ -7,8 +7,6 @@ import type { TeacherDashboardTab } from './components/dashboards/TeacherDashboa
 import { ProprietorDashboard } from './components/dashboards/ProprietorDashboard';
 import { BursarDashboard } from './components/dashboards/BursarDashboard';
 import { AdminDashboard } from './components/dashboards/AdminDashboard';
-import { GateDashboard } from './components/dashboards/GateDashboard';
-import { NurseDashboard } from './components/dashboards/NurseDashboard';
 import { ClassOverviewPage } from './components/dashboards/ClassOverviewPage';
 import { ClassDetailView } from './components/dashboards/ClassDetailView';
 import { ClassStudentProfileView } from './components/dashboards/ClassStudentProfileView';
@@ -38,8 +36,15 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '../api/client';
 import { generateSchoolToken } from '../services/auth';
 import { getCurrentSchoolId, getSchoolToken, setCurrentLevelId, setCurrentSchoolId, syncApiTokensFromStorage } from '../services/apiClient';
-import { type AppRole, type StaffRole } from './auth/permissions';
+import { type AppRole } from './auth/permissions';
 import { getOnboardingRoute, type SetupStage } from './auth/setupRoutes';
+import {
+  getDashboardRoleFromPath,
+  getDashboardRouteForRole,
+  getStoredRoleDashboardRoute,
+  normalizeRoleValue,
+  selectedSchoolRoleKey,
+} from './auth/roleRoutes';
 
 type StaffCategory = {
   name: string;
@@ -82,23 +87,7 @@ type LoginResponseShape = {
 
 const postLoginPayloadKey = 'post-login-response';
 const selectedSchoolAssignmentKey = 'selected-school-assignment';
-const selectedSchoolRoleKey = 'selected-school-role';
 const selectedStudentKey = 'selected-student';
-
-const normalizeRoleValue = (value: string): AppRole | null => {
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-
-  if (normalized === 'parent' || normalized === 'guardian') return 'guardian';
-  if (normalized === 'teacher') return 'teacher';
-  if (normalized === 'proprietor' || normalized === 'principal') return 'proprietor';
-  if (normalized === 'admin' || normalized === 'administrator') return 'admin';
-  if (normalized === 'secretary') return 'secretary';
-  if (normalized === 'bursar' || normalized === 'accountant') return 'bursar';
-  if (normalized === 'gate' || normalized === 'gate_staff' || normalized === 'gatestaff') return 'gate';
-  if (normalized === 'nurse' || normalized === 'school_nurse') return 'nurse';
-
-  return null;
-};
 
 const getAppRoleFromTokenPayload = (payload: Record<string, unknown> | null): AppRole | null => {
   if (!payload) return null;
@@ -199,7 +188,8 @@ export const getInitialRouteAfterLogin = (loginData: LoginDataShape): string => 
       return `/select-category?schoolId=${encodeURIComponent(onlySchool.school_id || '')}`;
     }
 
-    return '/dashboard';
+    const role = typeof onlySchool.role === 'string' ? normalizeRoleValue(onlySchool.role) : null;
+    return getDashboardRouteForRole(role) || '/dashboard';
   }
 
   if (students.length > 1) return '/select-student';
@@ -419,7 +409,8 @@ function SchoolSelectionRoutePage() {
     }
 
     setIsGeneratingToken(false);
-    navigate('/dashboard');
+    const role = typeof school.role === 'string' ? normalizeRoleValue(school.role) : null;
+    navigate(getDashboardRouteForRole(role) || '/dashboard');
   };
 
   useEffect(() => {
@@ -575,7 +566,7 @@ function CategorySelectionRoutePage() {
   const handleCategorySelect = (category: StaffCategory) => {
     setSelectedLevel({ levelUuid: category.uuid, levelName: category.name });
     setCurrentLevelId(category.uuid);
-    navigate(`/dashboard?categoryUuid=${encodeURIComponent(category.uuid)}`);
+    navigate(getStoredRoleDashboardRoute(`?categoryUuid=${encodeURIComponent(category.uuid)}`));
   };
 
   return (
@@ -647,6 +638,12 @@ function AppShell() {
   useEffect(() => {
     if (!location.pathname.startsWith('/dashboard')) return;
 
+    const routeRole = getDashboardRoleFromPath(location.pathname);
+    if (routeRole) {
+      setCurrentRole(routeRole);
+      return;
+    }
+
     const storedSchoolRole = localStorage.getItem(selectedSchoolRoleKey);
     if (typeof storedSchoolRole === 'string') {
       const normalizedStoredRole = normalizeRoleValue(storedSchoolRole);
@@ -708,10 +705,6 @@ function AppShell() {
          return <AdminDashboard />;
        case 'secretary':
          return <AdminDashboard />;
-       case 'gate':
-         return <GateDashboard />;
-       case 'nurse':
-         return <NurseDashboard />;
        default:
          return <ParentDashboard />;
     }
@@ -754,7 +747,8 @@ function AppShell() {
           <Route path="/select-category" element={<CategorySelectionRoutePage />} />
           <Route path="/auth/account-hub" element={<AccountHubPage />} />
           <Route path="/no-access" element={<Navigate to="/auth/account-hub" replace />} />
-          <Route path="/select-level" element={<SelectLevelPage />} />
+          <Route path="/auth/levels" element={<SelectLevelPage />} />
+          <Route path="/select-level" element={<Navigate to="/auth/levels" replace />} />
         </Routes>
         <Toaster position="top-right" richColors />
       </>
@@ -764,7 +758,7 @@ function AppShell() {
   const storedSetupStage = localStorage.getItem('setup_stage');
   if (
     hasValidAuthToken() &&
-    location.pathname === '/dashboard' &&
+    location.pathname.startsWith('/dashboard') &&
     storedSetupStage &&
     storedSetupStage !== 'completed'
   ) {
@@ -800,7 +794,7 @@ function AppShell() {
           onThemeToggle={toggleTheme}
           isDark={isDark}
         >
-          {selectedLevel && location.pathname === '/dashboard' && (
+          {selectedLevel && location.pathname.startsWith('/dashboard') && (
             <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
               {selectedLevel.levelName}
             </div>
@@ -819,6 +813,10 @@ function AppShell() {
           <Routes>
             <Route path="/" element={renderDashboard()} />
             <Route path="/dashboard" element={renderDashboard()} />
+            <Route path="/dashboard/proprietor" element={<ProprietorDashboard />} />
+            <Route path="/dashboard/admin" element={<AdminDashboard />} />
+            <Route path="/dashboard/teacher" element={<TeacherDashboard activeTabOverride={mapTeacherViewToTab(currentView)} />} />
+            <Route path="/dashboard/secretary" element={<AdminDashboard />} />
             <Route path="/guardian/:studentId" element={<ParentDashboard />} />
             <Route path="/admin/classes/:classId" element={<ClassDetailView />} />
             <Route path="/admin/classes/:classId/students/:studentId" element={<ClassStudentProfileView />} />
@@ -853,7 +851,7 @@ function AppShell() {
             <option value="bursar" disabled>Bursar/Accountant (out of MVP scope)</option>
             <option value="guardian" disabled>Guardian (out of MVP scope)</option>
             <option value="gate" disabled>Gate Staff (scaffolding)</option>
-            <option value="nurse" disabled>School Nurse (scaffolding)</option>
+            {/* Medication/transport roles are outside the MVP. */}
           </select>
         </div>
       </div>

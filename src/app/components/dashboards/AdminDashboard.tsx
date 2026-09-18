@@ -15,6 +15,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Skeleton } from '../ui/skeleton';
 import { useNavigate } from 'react-router-dom';
 import { ClassSubjectAnalytics } from '../ClassSubjectAnalytics';
+import { showFees, showMedication, showTransport } from '../../mvpScope';
 
 type AtRiskStudent = {
   id: string;
@@ -1039,8 +1040,11 @@ const lessonNotesSeed: AdminLessonNote[] = [
 ];
 
 // Available roles for filtering
-const roles = ['proprietor', 'admin', 'teacher', 'secretary', 'bursar', 'guardian'];
+const roles = ['proprietor', 'admin', 'teacher', 'secretary'];
 const modules = ['syllabus', 'lesson_notes', 'fees', 'results', 'users', 'settings', 'assessments', 'medical', 'security'];
+const visibleAuditModules = modules.filter(
+  (module) => (showFees || module !== 'fees') && (showMedication || module !== 'medical') && (showTransport || module !== 'security'),
+);
 
 export function AdminDashboard() {
   const navigate = useNavigate();
@@ -1971,6 +1975,9 @@ export function AdminDashboard() {
       const moduleText = log.module.toLowerCase();
       const descriptionText = `${log.action} ${log.description}`.toLowerCase();
 
+      if (!showFees && (log.module === 'fees' || log.actorRole === 'bursar' || log.actorRole === 'guardian')) return false;
+      if (!showMedication && log.module === 'medical') return false;
+      if (!showTransport && log.module === 'security') return false;
       if (
         auditFilters.search &&
         !actorText.includes(auditFilters.search.toLowerCase()) &&
@@ -2447,7 +2454,7 @@ export function AdminDashboard() {
         attendanceOnTime: 0,
         lessonNotesSubmitted: 0,
         assessmentsWithinSla: 0,
-        medicalPickupUsage: 0,
+        medicalPickupUsage: showMedication || showTransport ? 0 : undefined,
       };
     }
 
@@ -2456,7 +2463,7 @@ export function AdminDashboard() {
         attendanceOnTime: acc.attendanceOnTime + row.attendanceCompliance,
         lessonNotesSubmitted: acc.lessonNotesSubmitted + row.lessonNotesOnTime,
         assessmentsWithinSla: acc.assessmentsWithinSla + (row.assessmentTurnaroundDays <= 3 ? 100 : row.assessmentTurnaroundDays <= 5 ? 60 : 30),
-        medicalPickupUsage: acc.medicalPickupUsage + row.medicalPickupLogUsage,
+        medicalPickupUsage: acc.medicalPickupUsage + (showMedication || showTransport ? row.medicalPickupLogUsage : 0),
       }),
       { attendanceOnTime: 0, lessonNotesSubmitted: 0, assessmentsWithinSla: 0, medicalPickupUsage: 0 },
     );
@@ -2465,12 +2472,12 @@ export function AdminDashboard() {
       attendanceOnTime: Math.round(totals.attendanceOnTime / dataHealthRows.length),
       lessonNotesSubmitted: Math.round(totals.lessonNotesSubmitted / dataHealthRows.length),
       assessmentsWithinSla: Math.round(totals.assessmentsWithinSla / dataHealthRows.length),
-      medicalPickupUsage: Math.round(totals.medicalPickupUsage / dataHealthRows.length),
+      medicalPickupUsage: showMedication || showTransport ? Math.round(totals.medicalPickupUsage / dataHealthRows.length) : undefined,
     };
   }, [dataHealthRows]);
 
   const overallDataCompletenessScore = useMemo(() => {
-    const values = Object.values(dataCompletenessBreakdown);
+    const values = Object.values(dataCompletenessBreakdown).filter((value): value is number => typeof value === 'number');
     if (!values.length) return 0;
     return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
   }, [dataCompletenessBreakdown]);
@@ -2999,15 +3006,17 @@ export function AdminDashboard() {
                     <div className="h-full bg-red-500" style={{ width: `${dataCompletenessBreakdown.assessmentsWithinSla}%` }} />
                   </div>
                 </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Medical/pickup logs used</span>
-                    <span className="font-medium">{dataCompletenessBreakdown.medicalPickupUsage}%</span>
+                {(showMedication || showTransport) && (
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Medical/pickup logs used</span>
+                      <span className="font-medium">{dataCompletenessBreakdown.medicalPickupUsage}%</span>
+                    </div>
+                    <div className="h-2 rounded bg-muted overflow-hidden">
+                      <div className="h-full bg-red-400" style={{ width: `${dataCompletenessBreakdown.medicalPickupUsage}%` }} />
+                    </div>
                   </div>
-                  <div className="h-2 rounded bg-muted overflow-hidden">
-                    <div className="h-full bg-red-400" style={{ width: `${dataCompletenessBreakdown.medicalPickupUsage}%` }} />
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </Card>
@@ -4239,7 +4248,7 @@ export function AdminDashboard() {
               onChange={(e) => setAuditFilters((prev) => ({ ...prev, module: e.target.value }))}
             >
               <option value="">All Modules</option>
-              {modules.map((module) => <option key={module}>{module}</option>)}
+              {visibleAuditModules.map((module) => <option key={module}>{module}</option>)}
             </select>
             <select
               className="p-2 border border-border rounded bg-input-background"
