@@ -12,6 +12,7 @@ import {
   ChevronRight, ChevronDown, Flag, LogOut, School, TabletSmartphone
 } from 'lucide-react';
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { AxiosError } from 'axios';
 import { Modal } from '../Modal';
 import { ClassSubjectAnalytics } from '../ClassSubjectAnalytics';
 import {
@@ -49,12 +50,15 @@ import {
 import {
   removeStaff,
   updateStaffInfo,
+  updateStaffRole,
   updateStaffStatus,
   type StaffLevel,
   type StaffRole,
   type StaffStatus,
   type StaffUser,
 } from '../../../services/staffApi';
+import { decodeAuthTokenPayload, getStoredAuthToken } from '../../../api/client';
+import { normalizeRoleValue, selectedSchoolRoleKey } from '../../auth/roleRoutes';
 import {
   getUsers,
   inviteUser,
@@ -75,6 +79,7 @@ import {
   getSessions,
   createSession,
   updateSession,
+  updateSessionStatus,
   deleteSession,
   getTerms,
   createTerm,
@@ -529,6 +534,26 @@ if (typeof window !== 'undefined' && !localStorage.getItem('principal-audit-logs
 
 // ========== MAIN COMPONENT ==========
 export function ProprietorDashboard() {
+  // Temporarily hide these unfinished dashboard areas without removing their
+  // implementation, so they can be restored by changing these flags.
+  const isResultApprovalEnabled = false;
+  const isParentEngagementEnabled = false;
+  const isMedicationEnabled = false;
+  const isTransportEnabled = false;
+  const isGuardianDataEnabled = false;
+  const currentUserRole = useMemo(() => {
+    const storedRole = localStorage.getItem(selectedSchoolRoleKey);
+    if (storedRole) return normalizeRoleValue(storedRole);
+
+    const token = getStoredAuthToken();
+    const payload = token ? decodeAuthTokenPayload(token) : null;
+    const candidates = [payload?.role, payload?.userRole, payload?.user_role, payload?.staffRole, payload?.staff_role];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string') return normalizeRoleValue(candidate);
+    }
+    return null;
+  }, []);
+  const canManageStaffRoleAndStatus = currentUserRole === 'proprietor' || currentUserRole === 'admin';
   const [activeMainTab, setActiveMainTab] = useState<
     'fee' |
     'kpi' |
@@ -1341,8 +1366,8 @@ export function ProprietorDashboard() {
             toDate: today,
             classId: attendanceClassId,
           }),
-          getMedicationExceptions(levelId, { date: today }),
-          getTransportDistribution(levelId, currentTermId ? { termId: currentTermId, classId: transportClassId } : { date: today, classId: transportClassId }),
+          isMedicationEnabled ? getMedicationExceptions(levelId, { date: today }) : Promise.resolve([] as MedicationException[]),
+          isTransportEnabled ? getTransportDistribution(levelId, currentTermId ? { termId: currentTermId, classId: transportClassId } : { date: today, classId: transportClassId }) : Promise.resolve([] as TransportMode[]),
           getClassesList(levelId),
         ]);
 
@@ -1670,13 +1695,32 @@ export function ProprietorDashboard() {
     }
   };
 
-  const handleUserStatusChange = async (userId: string, nextStatus: StaffStatus) => {
+  const handleUserRoleChange = async (userId: string, nextRole: StaffRole) => {
+    if (!canManageStaffRoleAndStatus) return;
+
+    try {
+      await updateStaffRole(userId, nextRole);
+      setPrincipalUsers((users) => users.map((user) => (user.id === userId ? { ...user, role: nextRole } : user)));
+    } catch (error) {
+      const axiosError = error as AxiosError<{ message?: string }>;
+      setUserManagementError(axiosError.response?.data?.message || (error instanceof Error ? error.message : 'Unable to update role.'));
+    }
+  };
+
+  const handleUserStatusChange = async (userId: string, nextStatus: Exclude<StaffStatus, 'pending'>) => {
+    if (!canManageStaffRoleAndStatus) return;
+
     try {
       await updateStaffStatus(userId, nextStatus);
-      await fetchUsers();
+      setPrincipalUsers((users) => users.map((user) => (user.id === userId ? { ...user, status: nextStatus } : user)));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to update status.';
-      setUserManagementError(message);
+      const axiosError = error as AxiosError<{ message?: string }>;
+      const backendMessage = axiosError.response?.data?.message;
+      setUserManagementError(
+        axiosError.response?.status === 400 && backendMessage
+          ? backendMessage
+          : backendMessage || (error instanceof Error ? error.message : 'Unable to update status.'),
+      );
     }
   };
 
@@ -1820,7 +1864,7 @@ export function ProprietorDashboard() {
   const handleChangeStatus = async (type: 'session' | 'term', id: string, status: AcademicSession['status'] | AcademicTerm['status']) => {
     try {
       if (type === 'session') {
-        const updated = await updateSession(id, { status: status as AcademicSession['status'] });
+        const updated = await updateSessionStatus(id, status as AcademicSession['status']);
         setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
       } else {
         const updated = await updateTermStatus(id, status as AcademicTerm['status']);
@@ -2257,8 +2301,8 @@ export function ProprietorDashboard() {
             ...(showFees ? [{ id: 'fee', label: 'Fee Oversight' }] : []),
             { id: 'kpi', label: 'School KPI' },
             { id: 'approvals', label: 'Approval Workflow' },
-            { id: 'resultApproval', label: 'Result Approval' },
-            { id: 'parentEngagement', label: 'Parent Engagement' },
+            ...(isResultApprovalEnabled ? [{ id: 'resultApproval', label: 'Result Approval' }] : []),
+            ...(isParentEngagementEnabled ? [{ id: 'parentEngagement', label: 'Parent Engagement' }] : []),
             { id: 'schoolSetup', label: 'School Setup' },
             { id: 'userManagement', label: 'User Management' },
             { id: 'auditLogs', label: 'Audit Logs' },
@@ -2412,12 +2456,12 @@ export function ProprietorDashboard() {
             <Card title="Attendance Trend (Last 30 days)">
               <ResponsiveContainer width="100%" height={200}><LineChart data={kpiAttendanceTrend}><CartesianGrid /><XAxis dataKey="week" /><YAxis /><Tooltip /><Line type="monotone" dataKey="present" stroke="#10b981" /></LineChart></ResponsiveContainer>
             </Card>
-            <Card title="Medication Exceptions Today">
+            {isMedicationEnabled && <Card title="Medication Exceptions Today">
               {kpiMedicationExceptions.length > 0 ? kpiMedicationExceptions.map((ex, i) => <div key={`${ex.student}-${ex.timeDue}-${i}`} className="flex items-center gap-2 p-2 border-b"><Heart size={14} className="text-red-500"/><div><p className="text-sm">{ex.student} ({ex.class}) - {ex.medication}</p><p className="text-xs text-muted-foreground">Missed at {ex.timeDue} - {ex.reason || ex.status || 'No reason provided'}</p></div></div>) : <p className="text-sm text-muted-foreground">No medication exceptions for today.</p>}
-            </Card>
-            <Card title="Transport Distribution">
+            </Card>}
+            {isTransportEnabled && <Card title="Transport Distribution">
               <ResponsiveContainer width="100%" height={180}><PieChart><Pie data={kpiTransportDistribution} dataKey="count" nameKey="mode" cx="50%" cy="50%" outerRadius={60} label><Cell fill="#3b82f6"/><Cell fill="#10b981"/><Cell fill="#f59e0b"/><Cell fill="#8b5cf6"/></Pie><Tooltip /></PieChart></ResponsiveContainer>
-            </Card>
+            </Card>}
           </div>
 
           <div className="mt-8 border-t pt-6">
@@ -2573,7 +2617,7 @@ export function ProprietorDashboard() {
       )}
       
       {/* ========== TAB 4: RESULT APPROVAL (Block 8) ========== */}
-      {activeMainTab === 'resultApproval' && (
+      {isResultApprovalEnabled && activeMainTab === 'resultApproval' && (
         <>
         {/* Result Release + Fee Gating (Block 5) */}
           <Card title={showFees ? 'Result Release Control & Fee Gating' : 'Result Release Control'}>
@@ -2628,7 +2672,7 @@ export function ProprietorDashboard() {
       )}
       
       {/* ========== TAB 5: PARENT ENGAGEMENT (Block 7) ========== */}
-      {activeMainTab === 'parentEngagement' && (
+      {isParentEngagementEnabled && activeMainTab === 'parentEngagement' && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="border rounded p-4 bg-gradient-to-br from-blue-50 to-white"><div className="flex justify-between"><span className="text-muted-foreground">Parents Activated</span><Users size={18}/></div><p className="text-3xl font-bold">{guardianEngagementData.totalGuardiansActivated}</p></div>
@@ -2817,8 +2861,8 @@ export function ProprietorDashboard() {
                         <thead>
                           <tr className="border-b text-left">
                             <th className="py-2 px-2">Student</th>
-                            <th className="py-2 px-2">Guardian</th>
-                            <th className="py-2 px-2">Contact</th>
+                            {isGuardianDataEnabled && <th className="py-2 px-2">Guardian</th>}
+                            {isGuardianDataEnabled && <th className="py-2 px-2">Contact</th>}
                             <th className="py-2 px-2">Average</th>
                             <th className="py-2 px-2">Actions</th>
                           </tr>
@@ -2827,8 +2871,8 @@ export function ProprietorDashboard() {
                           {(classStudents[selectedSetupClassId || ''] || []).map((student) => (
                             <tr key={student.id} className="border-b">
                               <td className="py-2 px-2">{student.name}</td>
-                              <td className="py-2 px-2">{student.guardian.name}</td>
-                              <td className="py-2 px-2">{student.guardian.phone}</td>
+                              {isGuardianDataEnabled && <td className="py-2 px-2">{student.guardian.name}</td>}
+                              {isGuardianDataEnabled && <td className="py-2 px-2">{student.guardian.phone}</td>}
                               <td className="py-2 px-2">{student.averageScore}%</td>
                               <td className="py-2 px-2"><Button size="sm" variant="outline" onClick={() => setSelectedStudentProfile(student)}>View</Button></td>
                             </tr>
@@ -3155,7 +3199,24 @@ export function ProprietorDashboard() {
                     <td className="py-2 font-medium">{`${user.firstName} ${user.lastName}`.trim()}</td>
                     <td className="py-2">{user.email}</td>
                     <td className="py-2">{user.phoneNumber || '-'}</td>
-                    <td className="py-2"><Badge variant="default">{user.role}</Badge></td>
+                    <td className="py-2">
+                      {canManageStaffRoleAndStatus ? (
+                        <select
+                          className="border rounded p-1 text-xs"
+                          value={user.role}
+                          onChange={(e) => handleUserRoleChange(user.id, e.target.value as StaffRole)}
+                          aria-label={`Change role for ${user.firstName} ${user.lastName}`}
+                        >
+                          <option value="admin">admin</option>
+                          <option value="principal">principal</option>
+                          <option value="secretary">secretary</option>
+                          <option value="teacher">teacher</option>
+                          <option value="helper">helper</option>
+                          <option value="bursar">bursar</option>
+                          <option value="accountant">accountant</option>
+                        </select>
+                      ) : <Badge variant="default">{user.role}</Badge>}
+                    </td>
                     <td className="py-2">
                       {(
                         (user.levels && user.levels.length
@@ -3165,16 +3226,16 @@ export function ProprietorDashboard() {
                       ) || '-'}
                     </td>
                     <td className="py-2">
-                      <select
+                      {canManageStaffRoleAndStatus && user.status !== 'pending' ? <select
                         className="border rounded p-1 text-xs"
                         value={user.status}
-                        onChange={(e) => handleUserStatusChange(user.id, e.target.value as StaffStatus)}
+                        onChange={(e) => handleUserStatusChange(user.id, e.target.value as Exclude<StaffStatus, 'pending'>)}
                       >
                         <option value="active">active</option>
                         <option value="inactive">inactive</option>
                         <option value="suspended">suspended</option>
                         <option value="deleted">deleted</option>
-                      </select>
+                      </select> : <Badge variant={getPrincipalUserStatusBadgeVariant(user.status)}>{user.status}</Badge>}
                     </td>
                     <td className="py-2">
                       <div className="flex gap-2">
@@ -3641,13 +3702,13 @@ export function ProprietorDashboard() {
           <div className="space-y-3 text-sm">
             <p><strong>Admission Number:</strong> {selectedStudentProfile.admissionNumber}</p>
             <p><strong>Class:</strong> {selectedSetupClass?.className || '-'}</p>
-            <div className="rounded border p-3">
+            {isGuardianDataEnabled && <div className="rounded border p-3">
               <p className="font-medium mb-1">Guardian Information</p>
               <p><strong>Name:</strong> {selectedStudentProfile.guardian.name}</p>
               <p><strong>Relationship:</strong> {selectedStudentProfile.guardian.relationship}</p>
               <p><strong>Phone:</strong> {selectedStudentProfile.guardian.phone}</p>
               <p><strong>Email:</strong> {selectedStudentProfile.guardian.email}</p>
-            </div>
+            </div>}
             <div className="overflow-x-auto border rounded">
               <table className="w-full text-sm">
                 <thead>

@@ -51,6 +51,10 @@ export type UpdateStaffInfoPayload = {
   levelIds?: string[];
 };
 
+export type StaffMutationResponse = {
+  message: string;
+};
+
 const unwrapEnvelope = <T>(payload: unknown): T => {
   const envelope = payload as Partial<ApiEnvelope<T>>;
   if (typeof envelope === 'object' && envelope !== null && 'data' in envelope) {
@@ -202,26 +206,62 @@ export const updateStaffInfo = async (staffId: string, body: UpdateStaffInfoPayl
   return normalizeStaffUser(payload);
 };
 
-export const updateStaffRole = async (staffId: string, newRole: StaffRole): Promise<StaffUser> => {
-  const payload = await requestWithFallback<unknown>([
-    `/staff/${encodeURIComponent(staffId)}/role`,
-    `/${encodeURIComponent(staffId)}/role`,
-  ], {
-    method: 'PATCH',
-    body: { newRole },
-  });
-  return normalizeStaffUser(payload);
+export const updateStaffRole = async (staffId: string, newRole: StaffRole): Promise<StaffMutationResponse> => {
+  const response = await schoolApi.patch(`/staff/${encodeURIComponent(staffId)}/role`, { newRole });
+  return { message: response.data?.message || 'Staff role updated successfully' };
 };
 
-export const updateStaffStatus = async (staffId: string, newStatus: StaffStatus): Promise<StaffUser> => {
-  const payload = await requestWithFallback<unknown>([
-    `/staff/${encodeURIComponent(staffId)}/status`,
-    `/${encodeURIComponent(staffId)}/status`,
-  ], {
-    method: 'PATCH',
-    body: { newStatus },
+export const updateStaffStatus = async (staffId: string, newStatus: Exclude<StaffStatus, 'pending'>): Promise<StaffMutationResponse> => {
+  const response = await schoolApi.patch(`/staff/${encodeURIComponent(staffId)}/status`, { newStatus });
+  return { message: response.data?.message || 'Staff status updated successfully' };
+};
+
+export type VerifyInviteResponse = {
+  userId: string;
+  schoolId: string;
+  role: StaffRole;
+  firstName: string;
+  lastName: string;
+};
+
+export type CompleteStaffSetupPayload = {
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  password: string;
+  gender: 'male' | 'female' | 'other';
+  dateOfBirth: string;
+};
+
+export type CompleteStaffSetupResponse = {
+  userId: string;
+  schoolId: string;
+  role: StaffRole;
+  token: string;
+};
+
+export const verifyInvite = async (inviteToken: string): Promise<VerifyInviteResponse> => {
+  const response = await schoolApi.get('/staff/verify-invite', {
+    headers: { Authorization: `Bearer ${inviteToken}` },
   });
-  return normalizeStaffUser(payload);
+  const data = response.data?.data || {};
+  return {
+    userId: data.userId,
+    schoolId: data.schoolId,
+    role: data.role,
+    firstName: data.first_name || '',
+    lastName: data.last_name || '',
+  };
+};
+
+export const completeStaffSetup = async (
+  inviteToken: string,
+  body: CompleteStaffSetupPayload,
+): Promise<CompleteStaffSetupResponse> => {
+  const response = await schoolApi.post('/staff/complete-setup', body, {
+    headers: { Authorization: `Bearer ${inviteToken}` },
+  });
+  return response.data?.data;
 };
 
 export const removeStaff = async (staffId: string): Promise<void> => {

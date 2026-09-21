@@ -4,6 +4,9 @@ export const selectedSchoolRoleKey = 'selected-school-role';
 
 const dashboardRoles: AppRole[] = ['proprietor', 'admin', 'teacher', 'secretary'];
 
+export const getLevelDashboardRoute = (levelId: string, query = ''): string =>
+  `/${encodeURIComponent(levelId)}/dashboard${query}`;
+
 export const normalizeRoleValue = (value: string): AppRole | null => {
   const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
 

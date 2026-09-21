@@ -7,6 +7,15 @@ export function useLevelContext() {
   const { selectedLevel } = useSelectedLevel();
 
   const levelId = useMemo(() => {
+    const levelPathMatch = location.pathname.match(/^\/([^/?#]+)\/dashboard(?:\/|$)/);
+    if (levelPathMatch?.[1]) {
+      try {
+        return decodeURIComponent(levelPathMatch[1]);
+      } catch {
+        return levelPathMatch[1];
+      }
+    }
+
     const params = new URLSearchParams(location.search);
     const queryLevel = params.get('categoryUuid');
     if (queryLevel) return queryLevel;
@@ -22,7 +31,7 @@ export function useLevelContext() {
     } catch {
       return '';
     }
-  }, [location.search, selectedLevel?.levelUuid]);
+  }, [location.pathname, location.search, selectedLevel?.levelUuid]);
 
   return {
     levelId,

@@ -37,11 +37,11 @@ import { decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '.
 import { generateSchoolToken } from '../services/auth';
 import { getCurrentSchoolId, getSchoolToken, setCurrentLevelId, setCurrentSchoolId, syncApiTokensFromStorage } from '../services/apiClient';
 import { type AppRole } from './auth/permissions';
-import { getOnboardingRoute, type SetupStage } from './auth/setupRoutes';
+import { getOnboardingRoute, normalizeSetupStage, type SetupStage } from './auth/setupRoutes';
 import {
   getDashboardRoleFromPath,
   getDashboardRouteForRole,
-  getStoredRoleDashboardRoute,
+  getLevelDashboardRoute,
   normalizeRoleValue,
   selectedSchoolRoleKey,
 } from './auth/roleRoutes';
@@ -89,6 +89,9 @@ const postLoginPayloadKey = 'post-login-response';
 const selectedSchoolAssignmentKey = 'selected-school-assignment';
 const selectedStudentKey = 'selected-student';
 
+const isDashboardPath = (pathname: string) =>
+  pathname.startsWith('/dashboard') || /^\/[^/?#]+\/dashboard(?:\/|$)/.test(pathname);
+
 const getAppRoleFromTokenPayload = (payload: Record<string, unknown> | null): AppRole | null => {
   if (!payload) return null;
 
@@ -125,26 +128,6 @@ const getAppRoleFromTokenPayload = (payload: Record<string, unknown> | null): Ap
   }
 
   return null;
-};
-
-const normalizeSetupStage = (stage: string | null | undefined): SetupStage | null => {
-  if (!stage) return null;
-
-  switch (stage) {
-    case 'pending':
-    case 'session_created':
-    case 'term_created':
-    case 'level_created':
-    case 'class_created':
-    case 'completed':
-      return stage;
-    case 'levels_created':
-      return 'level_created';
-    case 'classes_created':
-      return 'class_created';
-    default:
-      return null;
-  }
 };
 
 const getCategoryOrder = (category: StaffCategory) => {
@@ -186,6 +169,10 @@ export const getInitialRouteAfterLogin = (loginData: LoginDataShape): string => 
     const categories = sortCategories(onlySchool.categories || []);
     if (categories.length > 1) {
       return `/select-category?schoolId=${encodeURIComponent(onlySchool.school_id || '')}`;
+    }
+
+    if (categories.length === 1 && categories[0].uuid) {
+      return getLevelDashboardRoute(categories[0].uuid);
     }
 
     const role = typeof onlySchool.role === 'string' ? normalizeRoleValue(onlySchool.role) : null;
@@ -410,7 +397,8 @@ function SchoolSelectionRoutePage() {
 
     setIsGeneratingToken(false);
     const role = typeof school.role === 'string' ? normalizeRoleValue(school.role) : null;
-    navigate(getDashboardRouteForRole(role) || '/dashboard');
+    const level = categories[0];
+    navigate(level?.uuid ? getLevelDashboardRoute(level.uuid) : (getDashboardRouteForRole(role) || '/dashboard'));
   };
 
   useEffect(() => {
@@ -566,7 +554,7 @@ function CategorySelectionRoutePage() {
   const handleCategorySelect = (category: StaffCategory) => {
     setSelectedLevel({ levelUuid: category.uuid, levelName: category.name });
     setCurrentLevelId(category.uuid);
-    navigate(getStoredRoleDashboardRoute(`?categoryUuid=${encodeURIComponent(category.uuid)}`));
+    navigate(getLevelDashboardRoute(category.uuid));
   };
 
   return (
@@ -623,7 +611,7 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
-    if (!location.pathname.startsWith('/dashboard')) return;
+    if (!isDashboardPath(location.pathname)) return;
 
     const currentSchoolId = getCurrentSchoolId();
     const schoolToken = getSchoolToken();
@@ -636,7 +624,7 @@ function AppShell() {
   }, [location.pathname, navigate]);
 
   useEffect(() => {
-    if (!location.pathname.startsWith('/dashboard')) return;
+    if (!isDashboardPath(location.pathname)) return;
 
     const routeRole = getDashboardRoleFromPath(location.pathname);
     if (routeRole) {
@@ -758,9 +746,9 @@ function AppShell() {
   const storedSetupStage = localStorage.getItem('setup_stage');
   if (
     hasValidAuthToken() &&
-    location.pathname.startsWith('/dashboard') &&
+    isDashboardPath(location.pathname) &&
     storedSetupStage &&
-    storedSetupStage !== 'completed'
+    normalizeSetupStage(storedSetupStage) !== 'completed'
   ) {
     const normalizedStage = normalizeSetupStage(storedSetupStage);
     if (normalizedStage && normalizedStage !== 'completed') {
@@ -794,7 +782,7 @@ function AppShell() {
           onThemeToggle={toggleTheme}
           isDark={isDark}
         >
-          {selectedLevel && location.pathname.startsWith('/dashboard') && (
+          {selectedLevel && isDashboardPath(location.pathname) && (
             <div className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
               {selectedLevel.levelName}
             </div>
@@ -813,6 +801,7 @@ function AppShell() {
           <Routes>
             <Route path="/" element={renderDashboard()} />
             <Route path="/dashboard" element={renderDashboard()} />
+            <Route path="/:levelId/dashboard" element={renderDashboard()} />
             <Route path="/dashboard/proprietor" element={<ProprietorDashboard />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
             <Route path="/dashboard/teacher" element={<TeacherDashboard activeTabOverride={mapTeacherViewToTab(currentView)} />} />

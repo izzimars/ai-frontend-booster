@@ -133,6 +133,18 @@ export const deleteSession = async (sessionId: string) => {
   await schoolApi.delete(`/school/sessions/${sessionId}`);
 };
 
+export const updateSessionStatus = async (
+  sessionId: string,
+  status: AcademicSession['status'],
+) => {
+  const response = await schoolApi.patch<ApiEnvelope<RawSession> | RawSession>(
+    `/school/sessions/${sessionId}/status`,
+    { status },
+  );
+  const rawSession = unwrapData<RawSession>(response.data, {});
+  return mapSession(rawSession);
+};
+
 // ========== TERMS ==========
 export const getTerms = async (params?: { session_id?: string; name?: string }) => {
   const response = await schoolApi.get<ApiEnvelope<RawTerm[]> | RawTerm[]>('/school/terms', { params });

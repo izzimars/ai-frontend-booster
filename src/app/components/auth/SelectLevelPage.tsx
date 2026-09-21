@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiClient, hasValidAuthToken } from '../../../api/client';
-import { getStoredRoleDashboardRoute } from '../../auth/roleRoutes';
+import { setCurrentLevelId } from '../../../services/apiClient';
+import { useSelectedLevel } from './LevelSelectionContext';
+import { getLevelDashboardRoute } from '../../auth/roleRoutes';
 
 type SelectableLevel = {
   id: string;
@@ -43,6 +45,7 @@ const normalizeLevels = (rawItems: LevelsApiItem[]): SelectableLevel[] => {
 export function SelectLevelPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { setSelectedLevel } = useSelectedLevel();
   const locationState = location.state as LocationState | null;
 
   const [levels, setLevels] = useState<SelectableLevel[]>(locationState?.levels || []);
@@ -85,12 +88,9 @@ export function SelectLevelPage() {
   }, [levels.length, navigate]);
 
   const handleSelectLevel = (level: SelectableLevel) => {
-    navigate(getStoredRoleDashboardRoute(`?levelId=${encodeURIComponent(level.id)}`), {
-      state: {
-        selectedLevelId: level.id,
-        selectedLevelName: level.name,
-      },
-    });
+    setSelectedLevel({ levelUuid: level.id, levelName: level.name });
+    setCurrentLevelId(level.id);
+    navigate(getLevelDashboardRoute(level.id));
   };
 
   return (

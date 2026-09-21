@@ -5,9 +5,10 @@ import { AuthLayout } from './AuthLayout';
 import { AuthErrorAlert } from './AuthErrorAlert';
 import { Stepper, type SetupStage, mapSetupStageToStepIndex } from './Stepper';
 import { decodeAuthTokenPayload, getStoredAuthToken, hasValidAuthToken } from '../../../api/client';
-import { schoolApi } from '../../../services/apiClient';
+import { schoolApi, setCurrentLevelId } from '../../../services/apiClient';
 import { getOnboardingRoute } from '../../auth/setupRoutes';
-import { getStoredRoleDashboardRoute } from '../../auth/roleRoutes';
+import { getLevelDashboardRoute, getStoredRoleDashboardRoute } from '../../auth/roleRoutes';
+import { useSelectedLevel } from './LevelSelectionContext';
 
 type WizardStep = 0 | 1 | 2 | 3 | 4;
 
@@ -159,6 +160,7 @@ function SessionSelector({ options, selectedSessionId, isLoading, onChange }: Se
 export function SchoolSetupWizardPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { setSelectedLevel } = useSelectedLevel();
 
   const [currentStep, setCurrentStep] = useState<WizardStep>(() => getStepFromSetupStage(localStorage.getItem(setupStageKey)));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -686,7 +688,10 @@ export function SchoolSetupWizardPage() {
 
       await schoolApi.post('/school/classes', classesPayload);
 
-      localStorage.setItem(setupStageKey, 'classes_created');
+      // A school is ready for its dashboard once its initial classes exist.
+      // Keep the persisted client state canonical even if older APIs report
+      // `class_created` or `classes_created`.
+      localStorage.setItem(setupStageKey, 'completed');
 
       let resolvedLevels = createdLevels;
 
@@ -715,7 +720,10 @@ export function SchoolSetupWizardPage() {
       }
 
       if (resolvedLevels.length === 1) {
-        navigate(getStoredRoleDashboardRoute());
+        const [level] = resolvedLevels;
+        setSelectedLevel({ levelUuid: level.id, levelName: level.name });
+        setCurrentLevelId(level.id);
+        navigate(getLevelDashboardRoute(level.id));
         return;
       }
 

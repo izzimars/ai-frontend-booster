@@ -4,27 +4,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, Lock, Mail } from 'lucide-react';
 import { AuthErrorAlert } from './AuthErrorAlert';
 import { apiClient, decodeAuthTokenPayload, setStoredAuthToken } from '../../../api/client';
+import { normalizeSetupStage } from '../../auth/setupRoutes';
 
 type SignInFormState = {
   email: string;
   password: string;
-};
-
-const normalizeSetupStage = (setupStage: unknown): string | null => {
-  if (typeof setupStage !== 'string') return null;
-
-  switch (setupStage) {
-    case 'pending':
-    case 'session_created':
-    case 'term_created':
-    case 'level_created':
-    case 'levels_created':
-    case 'classes_created':
-    case 'completed':
-      return setupStage;
-    default:
-      return null;
-  }
 };
 
 export function SignInPage() {
