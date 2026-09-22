@@ -969,12 +969,9 @@ export function SubjectDetailPage() {
     return classMeta.studentRoster.find((student) => student.id === narrativeModalStudentId) || null;
   }, [classMeta, narrativeModalStudentId]);
 
-  const monthlyNarrativeStats = useMemo(() => {
+  const monthlyNarrativeStats = useMemo<Record<string, { attendanceRate: number; averageScore: number }>>(() => {
     if (!currentCycleSessions.length || !classMeta) {
-      return {
-        attendanceRate: 0,
-        averageScore: 0,
-      };
+      return {};
     }
 
     return classMeta.studentRoster.reduce<Record<string, { attendanceRate: number; averageScore: number }>>((acc, student) => {
@@ -997,7 +994,7 @@ export function SubjectDetailPage() {
 
       acc[student.id] = { attendanceRate, averageScore };
       return acc;
-    }, {});
+    }, {} as Record<string, { attendanceRate: number; averageScore: number }>);
   }, [classMeta, currentCycleSessions]);
 
   const buildAiDraft = (studentIdToDraft: string) => {

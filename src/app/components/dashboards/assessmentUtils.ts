@@ -179,7 +179,7 @@ export function normalizeAssessmentRecord(raw: unknown, fallback?: AssessmentSee
     createdAt: String(rawObject?.createdAt ?? fallback?.createdAt ?? new Date().toISOString()),
     staff: String(rawObject?.staff ?? fallback?.staff ?? 'Unknown'),
     studentResults,
-    updatedAt: String(rawObject?.updatedAt ?? fallback?.updatedAt ?? new Date().toISOString()),
+    updatedAt: String(rawObject?.updatedAt ?? fallback?.createdAt ?? new Date().toISOString()),
   };
 }
 
