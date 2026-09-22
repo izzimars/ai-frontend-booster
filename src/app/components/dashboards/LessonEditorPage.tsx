@@ -170,19 +170,19 @@ export function LessonEditorPage() {
   };
 
   const buildFallbackPrompt = (mode: FallbackPromptMode) => {
-    const gradeLabel = selectedClass || note.className || 'the class';
+    const gradeLabel = selectedClass || note?.className || 'the class';
     const topic = getPromptTopic();
 
     if (mode === 'content') {
       return [
-        `Write a lesson note for ${selectedSubject || 'this subject'} targeting ${gradeLabel} for Week ${note.week}.`,
+        `Write a lesson note for ${selectedSubject || 'this subject'} targeting ${gradeLabel} for Week ${note?.week ?? 1}.`,
         `Focus on ${topic} at a ${difficultyLevel} level.`,
         'Include learning objectives, a warm-up, guided practice, and an exit ticket.',
       ].join(' ');
     }
 
     return [
-      `Generate 5 ${generatorConfig.difficulty} questions for ${selectedSubject || 'this subject'} Week ${note.week} about ${topic}.`,
+      `Generate 5 ${generatorConfig.difficulty} questions for ${selectedSubject || 'this subject'} Week ${note?.week ?? 1} about ${topic}.`,
       'Format the response as a clear list with correct answers included.',
     ].join(' ');
   };
@@ -1342,7 +1342,7 @@ export function LessonEditorPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={persistQuestionsData}
+                    onClick={() => persistQuestionsData()}
                     className="opacity-80"
                   >
                     <Save size={14} className="mr-1" /> Save Question Bank ({questions.length})
